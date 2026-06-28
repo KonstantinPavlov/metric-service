@@ -1,12 +1,15 @@
 package main
 
 import (
-	"html/template"
-
+	"embed"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
+	"html/template"
 )
+
+//go:embed views/*
+var viewsFS embed.FS
 
 func main() {
 	if err := run(); err != nil {
@@ -19,8 +22,13 @@ func run() error {
 		Repository: repository.NewMemStorage(),
 	}
 
+	tmpl, err := template.ParseFS(viewsFS, "views/*.html")
+	if err != nil {
+		return err
+	}
+
 	renderer := &handler.TemplateRenderer{
-		Template: template.Must(template.ParseGlob("views/*.html")),
+		Template: tmpl,
 	}
 
 	httpServer := echo.New()

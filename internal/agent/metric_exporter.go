@@ -13,9 +13,10 @@ import (
 )
 
 type MetricsExporter struct {
-	Provider service.MetricsProvider
-	Client   http.Client
-	wg       sync.WaitGroup
+	ServerUrl string
+	Provider  service.MetricsProvider
+	Client    http.Client
+	wg        sync.WaitGroup
 }
 
 func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
@@ -53,7 +54,7 @@ func (exporter *MetricsExporter) Export() {
 }
 
 func (exporter *MetricsExporter) postMetric(metricType string, name string, value string) {
-	_, err := exporter.Client.Post(fmt.Sprintf("http://localhost:8080/update/%v/%v/%v", metricType, name, value), "text/plain", nil)
+	_, err := exporter.Client.Post(fmt.Sprintf("http://"+exporter.ServerUrl+"/update/%v/%v/%v", metricType, name, value), "text/plain", nil)
 	if err != nil {
 		log.Default().Printf("Error in publishing metric %v with type %v. Error: %v", name, metricType, err)
 	}

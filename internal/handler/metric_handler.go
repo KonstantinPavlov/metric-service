@@ -2,8 +2,6 @@ package handler
 
 import (
 	"fmt"
-	"html/template"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -18,12 +16,7 @@ const (
 )
 
 type MetricHandler struct {
-	Template   *template.Template
 	Repository repository.MetricRepository
-}
-
-func (h *MetricHandler) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return h.Template.ExecuteTemplate(w, name, data)
 }
 
 type ListView struct {

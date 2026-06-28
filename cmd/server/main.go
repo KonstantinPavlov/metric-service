@@ -15,15 +15,18 @@ func main() {
 }
 
 func run() error {
-	handler := handler.MetricHandler{
+	webHandler := handler.MetricHandler{
 		Repository: repository.NewMemStorage(),
-		Template:   template.Must(template.ParseGlob("views/*.html")),
+	}
+
+	renderer := &handler.TemplateRenderer{
+		Template: template.Must(template.ParseGlob("views/*.html")),
 	}
 
 	httpServer := echo.New()
-	httpServer.Renderer = &handler
-	httpServer.POST("/update/:type/:name/:value", handler.HandleUpdate)
-	httpServer.GET("/value/:type/:name", handler.HandleValue)
-	httpServer.GET("/", handler.HandleList)
-	return httpServer.Start(":8080")
+	httpServer.Renderer = renderer
+	httpServer.POST("/update/:type/:name/:value", webHandler.HandleUpdate)
+	httpServer.GET("/value/:type/:name", webHandler.HandleValue)
+	httpServer.GET("/", webHandler.HandleList)
+	return httpServer.Start("0.0.0.0:8080")
 }

@@ -1,10 +1,11 @@
 package main
 
 import (
-	"net/http"
+	"html/template"
 
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
+	"github.com/labstack/echo/v4"
 )
 
 func main() {
@@ -16,8 +17,13 @@ func main() {
 func run() error {
 	handler := handler.MetricHandler{
 		Repository: repository.NewMemStorage(),
+		Template:   template.Must(template.ParseGlob("views/*.html")),
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/update/{type}/{name}/{value}`, handler.HandleUpdate)
-	return http.ListenAndServe(":8080", mux)
+
+	httpServer := echo.New()
+	httpServer.Renderer = &handler
+	httpServer.POST("/update/:type/:name/:value", handler.HandleUpdate)
+	httpServer.GET("/value/:type/:name", handler.HandleValue)
+	httpServer.GET("/", handler.HandleList)
+	return httpServer.Start(":8080")
 }

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/labstack/echo/v4"
 )
 
 type MockMetricRepository struct {
@@ -112,12 +114,13 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 			tt.setupMock(mockRepo)
 
 			handler := &MetricHandler{Repository: mockRepo}
-			mux := http.NewServeMux()
-			mux.HandleFunc("/update/{type}/{name}/{value}", handler.HandleUpdate)
+
+			httpServer := echo.New()
+			httpServer.POST("/update/:type/:name/:value", handler.HandleUpdate)
 
 			req := httptest.NewRequest(tt.method, tt.url, nil)
 			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, req)
+			httpServer.ServeHTTP(rec, req)
 
 			if rec.Code != tt.expectedStatus {
 				t.Errorf("Expected status %d, but was %d", tt.expectedStatus, rec.Code)

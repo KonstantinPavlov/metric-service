@@ -12,6 +12,7 @@ import (
 var viewsFS embed.FS
 
 func main() {
+	parseFlags()	
 	if err := run(); err != nil {
 		panic(err)
 	}
@@ -36,5 +37,5 @@ func run() error {
 	httpServer.POST("/update/:type/:name/:value", webHandler.HandleUpdate)
 	httpServer.GET("/value/:type/:name", webHandler.HandleValue)
 	httpServer.GET("/", webHandler.HandleList)
-	return httpServer.Start("0.0.0.0:8080")
+	return httpServer.Start(flagRunAddr)
 }

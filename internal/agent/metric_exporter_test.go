@@ -95,6 +95,6 @@ func TestMetricsExporter_Export(t *testing.T) {
 			}),
 		},
 	}
-	exporter.Export()
+	exporter.Export(context.Background())
 	assert.Equal(t, 2, callCounter, "Export Method calling http.Client.Post must be 2 times - for gauge and for counter")
 }

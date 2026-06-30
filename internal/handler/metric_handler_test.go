@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
 )
 
@@ -14,12 +15,17 @@ type MockMetricRepository struct {
 	SaveGaugeFunc   func(name string, value float64) error
 }
 
-func (m *MockMetricRepository) GetCounters() map[string]int64 {
-	return map[string]int64{}
+func (m *MockMetricRepository) GetNames(metricTYpe string) []string {
+	return make([]string, 0)
 }
-func (m *MockMetricRepository) GetGauges() map[string]float64 {
-	return map[string]float64{}
+
+func (m *MockMetricRepository) GetCounter(name string) *repository.MetricData {
+	return nil
 }
+func (m *MockMetricRepository) GetGauge(name string) *repository.MetricData {
+	return nil
+}
+
 func (m *MockMetricRepository) SaveCounter(name string, value int64) error {
 	if m.SaveCounterFunc != nil {
 		return m.SaveCounterFunc(name, value)

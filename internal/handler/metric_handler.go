@@ -6,13 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
-)
-
-const (
-	MetricCounter = "counter"
-	MetricGauge   = "gauge"
 )
 
 type MetricHandler struct {
@@ -25,24 +21,42 @@ type ListView struct {
 	Value interface{}
 }
 
+func appenListView(views []ListView, metricType string, metric repository.MetricData) []ListView {
+	return append(views, ListView{
+		Name:  metric.Name,
+		Type:  metricType,
+		Value: metric.Value},
+	)
+}
+
 func (h *MetricHandler) HandleList(c echo.Context) error {
-	counters := h.Repository.GetCounters()
-	gauges := h.Repository.GetGauges()
+
+	counterNames := h.Repository.GetNames(model.Counter)
+	counters := make([]repository.MetricData, 0)
+
+	for _, counter := range counterNames {
+		metric := h.Repository.GetCounter(counter)
+		if metric != nil {
+			counters = append(counters, *metric)
+		}
+	}
+	gaugesNames := h.Repository.GetNames(model.Gauge)
+	gauges := make([]repository.MetricData, 0)
+
+	for _, gauge := range gaugesNames {
+		metric := h.Repository.GetGauge(gauge)
+		if metric != nil {
+			gauges = append(gauges, *metric)
+		}
+	}
 
 	metricsData := make([]ListView, 0)
-	for key, value := range counters {
-		metricsData = append(metricsData, ListView{
-			Name:  key,
-			Type:  MetricCounter,
-			Value: value},
-		)
+	for _, metric := range counters {
+		metricsData = appenListView(metricsData,model.Counter, metric)
 	}
-	for key, value := range gauges {
-		metricsData = append(metricsData, ListView{
-			Name:  key,
-			Type:  MetricGauge,
-			Value: value},
-		)
+
+	for _, metric := range gauges {
+		metricsData = appenListView(metricsData,model.Gauge, metric)
 	}
 
 	data := map[string]interface{}{
@@ -61,18 +75,18 @@ func (h *MetricHandler) HandleValue(c echo.Context) error {
 	}
 
 	switch metricType {
-	case MetricCounter:
-		value, ok := h.Repository.GetCounters()[metricName]
-		if !ok {
+	case model.Counter:
+		metric := h.Repository.GetCounter(metricName)
+		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
-		return c.String(http.StatusOK, fmt.Sprintf("%v", value))
-	case MetricGauge:
-		value, ok := h.Repository.GetGauges()[metricName]
-		if !ok {
+		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
+	case model.Gauge:
+		metric := h.Repository.GetGauge(metricName)
+		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
-		return c.String(http.StatusOK, fmt.Sprintf("%v", value))
+		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")
 	}
@@ -88,7 +102,7 @@ func (h *MetricHandler) HandleUpdate(c echo.Context) error {
 	}
 
 	switch metricType {
-	case MetricCounter:
+	case model.Counter:
 		vInt, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			return c.String(http.StatusBadRequest, "value must be a number")
@@ -98,7 +112,7 @@ func (h *MetricHandler) HandleUpdate(c echo.Context) error {
 		if err != nil {
 			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
 		}
-	case MetricGauge:
+	case model.Gauge:
 		vFloat, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			return c.String(http.StatusBadRequest, fmt.Sprintf("Failed to parse gauge value: %v", err))

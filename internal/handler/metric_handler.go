@@ -29,22 +29,22 @@ func appenListView(views []ListView, metricType string, metric repository.Metric
 	)
 }
 
-func (h *MetricHandler) HandleList(c echo.Context) error {
+func (mh *MetricHandler) HandleList(c echo.Context) error {
 
-	counterNames := h.Repository.GetNames(model.Counter)
+	counterNames := mh.Repository.GetNames(model.Counter)
 	counters := make([]repository.MetricData, 0)
 
 	for _, counter := range counterNames {
-		metric := h.Repository.GetCounter(counter)
+		metric := mh.Repository.GetCounter(counter)
 		if metric != nil {
 			counters = append(counters, *metric)
 		}
 	}
-	gaugesNames := h.Repository.GetNames(model.Gauge)
+	gaugesNames := mh.Repository.GetNames(model.Gauge)
 	gauges := make([]repository.MetricData, 0)
 
 	for _, gauge := range gaugesNames {
-		metric := h.Repository.GetGauge(gauge)
+		metric := mh.Repository.GetGauge(gauge)
 		if metric != nil {
 			gauges = append(gauges, *metric)
 		}
@@ -66,7 +66,7 @@ func (h *MetricHandler) HandleList(c echo.Context) error {
 	return c.Render(http.StatusOK, "list-view.html", data)
 }
 
-func (h *MetricHandler) HandleValue(c echo.Context) error {
+func (mh *MetricHandler) HandleValue(c echo.Context) error {
 	metricType := c.Param("type")
 	metricName := c.Param("name")
 
@@ -76,13 +76,13 @@ func (h *MetricHandler) HandleValue(c echo.Context) error {
 
 	switch metricType {
 	case model.Counter:
-		metric := h.Repository.GetCounter(metricName)
+		metric := mh.Repository.GetCounter(metricName)
 		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
 		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
 	case model.Gauge:
-		metric := h.Repository.GetGauge(metricName)
+		metric := mh.Repository.GetGauge(metricName)
 		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
@@ -92,7 +92,7 @@ func (h *MetricHandler) HandleValue(c echo.Context) error {
 	}
 }
 
-func (h *MetricHandler) HandleUpdate(c echo.Context) error {
+func (mh *MetricHandler) HandleUpdate(c echo.Context) error {
 	metricType := c.Param("type")
 	metricName := c.Param("name")
 	value := c.Param("value")
@@ -108,7 +108,7 @@ func (h *MetricHandler) HandleUpdate(c echo.Context) error {
 			return c.String(http.StatusBadRequest, "value must be a number")
 		}
 		log.Default().Printf("Saving data for counter metric %v", metricName)
-		err = h.Repository.SaveCounter(metricName, vInt)
+		err = mh.Repository.SaveCounter(metricName, vInt)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
 		}
@@ -117,7 +117,7 @@ func (h *MetricHandler) HandleUpdate(c echo.Context) error {
 		if err != nil {
 			return c.String(http.StatusBadRequest, fmt.Sprintf("Failed to parse gauge value: %v", err))
 		}
-		err = h.Repository.SaveGauge(metricName, vFloat)
+		err = mh.Repository.SaveGauge(metricName, vFloat)
 		log.Default().Printf("Saving data for gauge metric %v", metricName)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))

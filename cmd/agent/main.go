@@ -14,7 +14,10 @@ import (
 )
 
 func main() {
-	parseFlags()
+	err := parseFlags()
+	if err != nil {
+		panic(err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

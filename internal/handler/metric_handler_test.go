@@ -8,6 +8,7 @@ import (
 
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type MockMetricRepository struct {
@@ -113,13 +114,16 @@ func TestMetricHandler_HandleUpdate(t *testing.T) {
 		},
 	}
 
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
 			mockRepo := &MockMetricRepository{}
 			tt.setupMock(mockRepo)
 
-			handler := &MetricHandler{Repository: mockRepo}
+			handler := &MetricHandler{Repository: mockRepo, log: zapLogger}
 
 			httpServer := echo.New()
 			httpServer.POST("/update/:type/:name/:value", handler.HandleUpdate)

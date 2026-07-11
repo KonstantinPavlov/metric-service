@@ -2,18 +2,26 @@ package agent
 
 import (
 	"context"
-	"log"
 	"math/rand/v2"
 	"runtime"
 	"sync"
 	"time"
 
 	"github.com/KonstantinPavlov/metric-service/internal/service"
+	"go.uber.org/zap"
 )
 
 type MetricsCollector struct {
 	Provider service.MetricsProvider
+	log      *zap.Logger
 	wg       sync.WaitGroup
+}
+
+func NewMetricColletor(provider service.MetricsProvider, log *zap.Logger) MetricsCollector {
+	return MetricsCollector{
+		Provider: provider,
+		log:      log,
+	}
 }
 
 func (mc *MetricsCollector) Start(ctx context.Context, interval time.Duration) {
@@ -28,9 +36,9 @@ func (mc *MetricsCollector) Start(ctx context.Context, interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				log.Default().Print("Start collecting metrics...")
+				mc.log.Info("Start collecting metrics...")
 				mc.Collect()
-				log.Default().Print("End collecting metrics...")
+				mc.log.Info("End collecting metrics...")
 			case <-ctx.Done():
 				return
 			}
@@ -41,7 +49,6 @@ func (mc *MetricsCollector) Start(ctx context.Context, interval time.Duration) {
 func (mc *MetricsCollector) Stop() {
 	mc.wg.Wait()
 }
-
 
 func (mc *MetricsCollector) Collect() {
 	var ms runtime.MemStats

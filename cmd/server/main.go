@@ -2,26 +2,33 @@ package main
 
 import (
 	"embed"
+	"html/template"
+
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
+	"github.com/KonstantinPavlov/metric-service/internal/logger"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
-	"html/template"
+	"go.uber.org/zap"
 )
 
 //go:embed views/*
 var viewsFS embed.FS
 
 func main() {
-	parseFlags()	
-	if err := run(); err != nil {
+	zapLogger, _ := zap.NewProduction()
+	defer zapLogger.Sync()
+	parseFlags()
+	if err := run(zapLogger); err != nil {
 		panic(err)
 	}
 }
 
-func run() error {
-	webHandler := handler.MetricHandler{
-		Repository: repository.NewMemStorage(),
-	}
+func run(zapLogger *zap.Logger) error {
+
+	webHandler := handler.NewMetricHandler(
+		repository.NewMemStorage(),
+		zapLogger,
+	)
 
 	tmpl, err := template.ParseFS(viewsFS, "views/*.html")
 	if err != nil {
@@ -33,6 +40,7 @@ func run() error {
 	}
 
 	httpServer := echo.New()
+	httpServer.Use(logger.ZapMiddleware(zapLogger))
 	httpServer.Renderer = renderer
 	httpServer.POST("/update/:type/:name/:value", webHandler.HandleUpdate)
 	httpServer.GET("/value/:type/:name", webHandler.HandleValue)

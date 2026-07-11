@@ -11,6 +11,7 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/agent"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -18,6 +19,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	zapLogger, _ := zap.NewProduction()
+	defer zapLogger.Sync()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -26,16 +29,10 @@ func main() {
 	provider := &service.DefaultProvider{
 		Repository: storage,
 	}
-	collector := agent.MetricsCollector{
-		Provider: provider,
-	}
+	collector := agent.NewMetricColletor(provider, zapLogger)
 
 	collector.Start(ctx, time.Duration(flagPollInterval)*time.Second)
-	exporter := agent.MetricsExporter{
-		ServerUrl: flagServerAddr,
-		Provider:  provider,
-		Client:    http.Client{},
-	}
+	exporter := agent.NewMetricsExporter(flagServerAddr, provider, http.Client{}, zapLogger)
 	exporter.Start(ctx, time.Duration(flagReportInterval)*time.Second)
 	<-ctx.Done()
 	exporter.Stop()

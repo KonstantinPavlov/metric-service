@@ -2,17 +2,25 @@ package handler
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type MetricHandler struct {
 	Repository repository.MetricRepository
+	log        *zap.Logger
+}
+
+func NewMetricHandler(repository repository.MetricRepository, log *zap.Logger) MetricHandler {
+	return MetricHandler{
+		Repository: repository,
+		log:        log,
+	}
 }
 
 type ListView struct {
@@ -52,11 +60,11 @@ func (mh *MetricHandler) HandleList(c echo.Context) error {
 
 	metricsData := make([]ListView, 0)
 	for _, metric := range counters {
-		metricsData = appenListView(metricsData,model.Counter, metric)
+		metricsData = appenListView(metricsData, model.Counter, metric)
 	}
 
 	for _, metric := range gauges {
-		metricsData = appenListView(metricsData,model.Gauge, metric)
+		metricsData = appenListView(metricsData, model.Gauge, metric)
 	}
 
 	data := map[string]interface{}{
@@ -107,7 +115,7 @@ func (mh *MetricHandler) HandleUpdate(c echo.Context) error {
 		if err != nil {
 			return c.String(http.StatusBadRequest, "value must be a number")
 		}
-		log.Default().Printf("Saving data for counter metric %v", metricName)
+		mh.log.Info("Saving data for counter metric", zap.String("metric", metricName))
 		err = mh.Repository.SaveCounter(metricName, vInt)
 		if err != nil {
 			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
@@ -118,7 +126,7 @@ func (mh *MetricHandler) HandleUpdate(c echo.Context) error {
 			return c.String(http.StatusBadRequest, fmt.Sprintf("Failed to parse gauge value: %v", err))
 		}
 		err = mh.Repository.SaveGauge(metricName, vFloat)
-		log.Default().Printf("Saving data for gauge metric %v", metricName)
+		mh.log.Info("Saving data for gauge metric", zap.String("metric", metricName))
 		if err != nil {
 			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
 		}

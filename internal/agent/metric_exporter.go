@@ -3,20 +3,30 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
+	"go.uber.org/zap"
 )
 
 type MetricsExporter struct {
-	ServerUrl string
-	Provider  service.MetricsProvider
-	Client    http.Client
+	serverUrl string
+	provider  service.MetricsProvider
+	client    http.Client
+	log       *zap.Logger
 	wg        sync.WaitGroup
+}
+
+func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger) MetricsExporter {
+	return MetricsExporter{
+		serverUrl: serverUrl,
+		provider:  provider,
+		client:    client,
+		log:       log,
+	}
 }
 
 func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
@@ -29,9 +39,9 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				log.Default().Print("Start exporting metrics...")
+				me.log.Info("Start exporting metrics...")
 				me.Export(ctx)
-				log.Default().Print("End exporting metrics...")
+				me.log.Info("End exporting metrics...")
 			case <-ctx.Done():
 				return
 			}
@@ -44,26 +54,26 @@ func (me *MetricsExporter) Stop() {
 }
 
 func (me *MetricsExporter) Export(ctx context.Context) {
-	for key, value := range me.Provider.GetCounters() {
+	for key, value := range me.provider.GetCounters() {
 		me.postMetric(ctx, model.Counter, key, fmt.Sprint(value))
 
 	}
-	for key, value := range me.Provider.GetGauges() {
+	for key, value := range me.provider.GetGauges() {
 		me.postMetric(ctx, model.Gauge, key, fmt.Sprint(value))
 	}
 }
 
 func (me *MetricsExporter) postMetric(ctx context.Context, metricType string, name string, value string) {
 
-	request, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://"+me.ServerUrl+"/update/%v/%v/%v", metricType, name, value), nil)
+	request, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://"+me.serverUrl+"/update/%v/%v/%v", metricType, name, value), nil)
 	request.Header.Set("Content-Type", "text/plain")
 	if err != nil {
-		log.Default().Printf("Failed to create request: %v", err)
+		me.log.Error("Failed to create request!", zap.Error(err))
 	}
 
-	_, err = me.Client.Do(request)
+	_, err = me.client.Do(request)
 
 	if err != nil {
-		log.Default().Printf("Error in publishing metric %v with type %v. Error: %v", name, metricType, err)
+		me.log.Error("Error publishing metric", zap.String("name", name), zap.String("metric_type", metricType), zap.Error(err))
 	}
 }

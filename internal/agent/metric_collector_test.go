@@ -8,17 +8,20 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
 	"github.com/KonstantinPavlov/metric-service/internal/testutils"
+	"go.uber.org/zap"
 
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestMetricsCollector_Start(t *testing.T) {
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
 	calledChan := make(chan struct{})
 	mock := &testutils.MockProvider{CalledChan: calledChan}
 
 	mc := MetricsCollector{
 		Provider: mock,
+		log:      zapLogger,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -38,11 +41,13 @@ func TestMetricsCollector_Start(t *testing.T) {
 }
 
 func TestMetricCollector_Stop(t *testing.T) {
-
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
 	calledChan := make(chan struct{})
 	mock := &testutils.MockProvider{CalledChan: calledChan}
 	mc := MetricsCollector{
 		Provider: mock,
+		log:      zapLogger,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -69,6 +74,8 @@ func TestMetricCollector_Stop(t *testing.T) {
 }
 
 func TestMetricsCollector_Collect(t *testing.T) {
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
 	storage := repository.NewMemStorage()
 
 	provider := service.DefaultProvider{
@@ -77,6 +84,7 @@ func TestMetricsCollector_Collect(t *testing.T) {
 
 	collector := MetricsCollector{
 		Provider: &provider,
+		log:      zapLogger,
 	}
 
 	provider.Repository.SaveCounter("PollCount", 5)

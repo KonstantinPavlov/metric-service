@@ -12,14 +12,18 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/service"
 	"github.com/KonstantinPavlov/metric-service/internal/testutils"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func TestMetricsExporter_Start(t *testing.T) {
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
 	calledChan := make(chan struct{})
 	mock := &testutils.MockProvider{CalledChan: calledChan}
 
 	mc := MetricsExporter{
-		Provider: mock,
+		provider: mock,
+		log:      zapLogger,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -39,11 +43,13 @@ func TestMetricsExporter_Start(t *testing.T) {
 }
 
 func TestMetricsExporter_Stop(t *testing.T) {
-
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
 	calledChan := make(chan struct{})
 	mock := &testutils.MockProvider{CalledChan: calledChan}
 	mc := MetricsExporter{
-		Provider: mock,
+		provider: mock,
+		log:      zapLogger,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,6 +82,8 @@ func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestMetricsExporter_Export(t *testing.T) {
+	zapLogger, _ := zap.NewDevelopment()
+	defer zapLogger.Sync()
 	callCounter := 0
 	storage := repository.NewMemStorage()
 	provider := service.DefaultProvider{
@@ -83,9 +91,10 @@ func TestMetricsExporter_Export(t *testing.T) {
 	}
 	provider.SaveCounter("some-counter", 1)
 	provider.SaveGauge("some-gauge", 1)
-	exporter := &MetricsExporter{
-		Provider: &provider,
-		Client: http.Client{
+	exporter := NewMetricsExporter(
+		"",
+		&provider,
+		http.Client{
 			Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				callCounter++
 				return &http.Response{
@@ -94,7 +103,8 @@ func TestMetricsExporter_Export(t *testing.T) {
 				}, nil
 			}),
 		},
-	}
+		zapLogger,
+	)
 	exporter.Export(context.Background())
 	assert.Equal(t, 2, callCounter, "Export Method calling http.Client.Post must be 2 times - for gauge and for counter")
 }

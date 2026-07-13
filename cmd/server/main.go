@@ -6,8 +6,10 @@ import (
 
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
+	"github.com/KonstantinPavlov/metric-service/internal/middleware"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
 )
 
@@ -41,9 +43,11 @@ func run(zapLogger *zap.Logger) error {
 
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
+	httpServer.Use(echoMiddleware.Decompress())
+	httpServer.Use(middleware.GzipMiddleware())
 	httpServer.Renderer = renderer
 	httpServer.POST("/update/:type/:name/:value", webHandler.HandleParamUpdate)
-	httpServer.POST("/update/", webHandler.HandleBodyUpdate)	
+	httpServer.POST("/update/", webHandler.HandleBodyUpdate)
 	httpServer.GET("/value/:type/:name", webHandler.HandleGetValue)
 	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)

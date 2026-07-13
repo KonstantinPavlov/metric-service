@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -76,8 +77,18 @@ func (me *MetricsExporter) Export(ctx context.Context) {
 
 func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
 	jsonBytes, _ := json.Marshal(req)
-	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/update/", bytes.NewBuffer(jsonBytes))
+	var compessed bytes.Buffer
+	gzWriter := gzip.NewWriter(&compessed)
+	if _, err := gzWriter.Write(jsonBytes); err != nil {
+		me.log.Error("Failed to compress data!", zap.Error(err))
+	}
+	if err := gzWriter.Close(); err != nil {
+		me.log.Error("Failed to close compress data!", zap.Error(err))
+	}
+	me.log.Debug("Compressed data", zap.Int("before", len(jsonBytes)), zap.Int("after", compessed.Len()))
+	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/update/", &compessed)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Encoding", "gzip")
 	if err != nil {
 		me.log.Error("Failed to create request!", zap.Error(err))
 	}

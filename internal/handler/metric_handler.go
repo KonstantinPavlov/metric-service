@@ -69,7 +69,7 @@ func (mh *MetricHandler) HandleList(c echo.Context) error {
 	data := map[string]interface{}{
 		"Metrics": metricsData,
 	}
-
+	
 	return c.Render(http.StatusOK, "list-view.html", data)
 }
 

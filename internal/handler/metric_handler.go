@@ -38,7 +38,6 @@ func appenListView(views []ListView, metricType string, metric repository.Metric
 }
 
 func (mh *MetricHandler) HandleList(c echo.Context) error {
-
 	counterNames := mh.Repository.GetNames(model.Counter)
 	counters := make([]repository.MetricData, 0)
 
@@ -74,7 +73,40 @@ func (mh *MetricHandler) HandleList(c echo.Context) error {
 	return c.Render(http.StatusOK, "list-view.html", data)
 }
 
-func (mh *MetricHandler) HandleValue(c echo.Context) error {
+func (mh *MetricHandler) HandlePostValue(c echo.Context) error {
+	req := &model.Metrics{}
+	err := c.Bind(req)
+	if err != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("%v", err))
+	}
+
+	if req.ID == "" {
+		return c.String(http.StatusNotFound, "Metric name must be set")
+	}
+
+	switch req.MType {
+	case model.Counter:
+		metric := mh.Repository.GetCounter(req.ID)
+		if metric == nil {
+			return c.String(http.StatusNotFound, "metric not found!")
+		}
+		metricValue := metric.Value.(int64)
+		req.Delta = &metricValue
+		return c.JSON(http.StatusOK, req)
+	case model.Gauge:
+		metric := mh.Repository.GetGauge(req.ID)
+		if metric == nil {
+			return c.String(http.StatusNotFound, "metric not found!")
+		}
+		metricValue := metric.Value.(float64)
+		req.Value = &metricValue
+		return c.JSON(http.StatusOK, req)
+	default:
+		return c.String(http.StatusBadRequest, "unkwnown metric type!")
+	}
+}
+
+func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 	metricType := c.Param("type")
 	metricName := c.Param("name")
 
@@ -100,7 +132,43 @@ func (mh *MetricHandler) HandleValue(c echo.Context) error {
 	}
 }
 
-func (mh *MetricHandler) HandleUpdate(c echo.Context) error {
+func (mh *MetricHandler) HandleBodyUpdate(c echo.Context) error {
+	req := &model.Metrics{}
+	err := c.Bind(req)
+	if err != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("%v", err))
+	}
+
+	if req.ID == "" {
+		return c.String(http.StatusNotFound, "Metric name must be set")
+	}
+
+	switch req.MType {
+	case model.Counter:
+		if req.Delta == nil {
+			return c.String(http.StatusBadRequest, "delta not specified!")
+		}
+		mh.log.Info("Saving data for counter metric", zap.String("metric", req.ID))
+		err = mh.Repository.SaveCounter(req.ID, *req.Delta)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
+		}
+	case model.Gauge:
+		if req.Value == nil {
+			return c.String(http.StatusBadRequest, "value not specified!")
+		}
+		err = mh.Repository.SaveGauge(req.ID, *req.Value)
+		mh.log.Info("Saving data for gauge metric", zap.String("metric", req.ID))
+		if err != nil {
+			return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
+		}
+	default:
+		return c.String(http.StatusBadRequest, "unkwnown metric type!")
+	}
+	return c.JSON(http.StatusOK, req)
+}
+
+func (mh *MetricHandler) HandleParamUpdate(c echo.Context) error {
 	metricType := c.Param("type")
 	metricName := c.Param("name")
 	value := c.Param("value")

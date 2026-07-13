@@ -42,8 +42,10 @@ func run(zapLogger *zap.Logger) error {
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
 	httpServer.Renderer = renderer
-	httpServer.POST("/update/:type/:name/:value", webHandler.HandleUpdate)
-	httpServer.GET("/value/:type/:name", webHandler.HandleValue)
+	httpServer.POST("/update/:type/:name/:value", webHandler.HandleParamUpdate)
+	httpServer.POST("/update/", webHandler.HandleBodyUpdate)	
+	httpServer.GET("/value/:type/:name", webHandler.HandleGetValue)
+	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)
 	return httpServer.Start(flagRunAddr)
 }

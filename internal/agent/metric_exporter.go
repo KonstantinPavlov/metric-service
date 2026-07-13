@@ -1,8 +1,9 @@
 package agent
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
@@ -55,25 +56,39 @@ func (me *MetricsExporter) Stop() {
 
 func (me *MetricsExporter) Export(ctx context.Context) {
 	for key, value := range me.provider.GetCounters() {
-		me.postMetric(ctx, model.Counter, key, fmt.Sprint(value))
+		req := model.Metrics{
+			ID:    key,
+			MType: model.Counter,
+			Delta: &value,
+		}
+		me.postMetric(ctx, req)
 
 	}
 	for key, value := range me.provider.GetGauges() {
-		me.postMetric(ctx, model.Gauge, key, fmt.Sprint(value))
+		req := model.Metrics{
+			ID:    key,
+			MType: model.Gauge,
+			Value: &value,
+		}
+		me.postMetric(ctx, req)
 	}
 }
 
-func (me *MetricsExporter) postMetric(ctx context.Context, metricType string, name string, value string) {
-
-	request, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://"+me.serverUrl+"/update/%v/%v/%v", metricType, name, value), nil)
-	request.Header.Set("Content-Type", "text/plain")
+func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
+	jsonBytes, _ := json.Marshal(req)
+	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/update/", bytes.NewBuffer(jsonBytes))
+	request.Header.Set("Content-Type", "application/json")
 	if err != nil {
 		me.log.Error("Failed to create request!", zap.Error(err))
 	}
 
-	_, err = me.client.Do(request)
+	resp, err := me.client.Do(request)
 
 	if err != nil {
-		me.log.Error("Error publishing metric", zap.String("name", name), zap.String("metric_type", metricType), zap.Error(err))
+		me.log.Error("Error publishing metric", zap.String("name", req.ID), zap.String("metric_type", req.MType), zap.Error(err))
+	}
+
+	if resp != nil && resp.Header.Get("Content-Type") != "application/json" {
+		me.log.Error("Server response content-type is not valid!")
 	}
 }

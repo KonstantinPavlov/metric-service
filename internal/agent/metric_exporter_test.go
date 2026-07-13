@@ -91,6 +91,8 @@ func TestMetricsExporter_Export(t *testing.T) {
 	}
 	provider.SaveCounter("some-counter", 1)
 	provider.SaveGauge("some-gauge", 1)
+	header := http.Header{}
+	header.Add("Content-Type", "application/json")
 	exporter := NewMetricsExporter(
 		"",
 		&provider,
@@ -99,6 +101,7 @@ func TestMetricsExporter_Export(t *testing.T) {
 				callCounter++
 				return &http.Response{
 					StatusCode: http.StatusOK,
+					Header:     header,
 					Body:       io.NopCloser(bytes.NewBufferString("")),
 				}, nil
 			}),

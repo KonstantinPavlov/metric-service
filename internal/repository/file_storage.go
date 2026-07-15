@@ -59,7 +59,7 @@ func (fs *FileStorage) Start(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				fs.log.Info("Start async store metrics...", zap.String("storage_path", fs.cfg.storagePath))
-				fs.storeMetrics()
+				fs.storeMetricsAsync()
 				fs.log.Info("End async store metrics...", zap.String("storage_path", fs.cfg.storagePath))
 			case <-ctx.Done():
 				return
@@ -89,6 +89,12 @@ func (fs *FileStorage) Restore() {
 			fs.log.Warn("Unknown metric type in storage!", zap.String("metric_type", metric.MType))
 		}
 	}
+}
+
+func (fs *FileStorage) storeMetricsAsync() {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.storeMetrics()
 }
 
 func (fs *FileStorage) storeMetrics() {
@@ -160,14 +166,20 @@ func (fs *FileStorage) restore() ([]model.Metrics, error) {
 }
 
 func (fs *FileStorage) GetNames(metricType string) []string {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
 	return fs.repository.GetNames(metricType)
 }
 
 func (fs *FileStorage) GetCounter(name string) *MetricData {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
 	return fs.repository.GetCounter(name)
 }
 
 func (fs *FileStorage) GetGauge(name string) *MetricData {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
 	return fs.repository.GetGauge(name)
 }
 

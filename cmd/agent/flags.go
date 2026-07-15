@@ -2,8 +2,8 @@ package main
 
 import (
 	"flag"
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"os"
-	"strconv"
 )
 
 var flagServerAddr string
@@ -20,14 +20,14 @@ func parseFlags() error {
 	if address != "" {
 		flagServerAddr = address
 	}
-	reportInterval, err := parseIntEnvVal("REPORT_INTERVAL")
+	reportInterval, err := config.ParseIntEnvVal("REPORT_INTERVAL")
 	if err != nil {
 		return err
 	}
 	if reportInterval != nil {
 		flagReportInterval = *reportInterval
 	}
-	pollInterval, err := parseIntEnvVal("POLL_INTERVAL")
+	pollInterval, err := config.ParseIntEnvVal("POLL_INTERVAL")
 	if err != nil {
 		return err
 	}
@@ -36,16 +36,4 @@ func parseFlags() error {
 	}
 
 	return nil
-}
-
-func parseIntEnvVal(env string) (*int, error) {
-	valueStr := os.Getenv(env)
-	if valueStr != "" {
-		intVal, error := strconv.Atoi(valueStr)
-		if error != nil {
-			return nil, error
-		}
-		return &intVal, nil
-	}
-	return nil, nil
 }

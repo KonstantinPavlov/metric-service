@@ -59,7 +59,7 @@ func (fs *FileStorage) Start(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				fs.log.Info("Start async store metrics...", zap.String("storage_path", fs.cfg.storagePath))
-				fs.StoreMetrics()
+				fs.storeMetrics()
 				fs.log.Info("End async store metrics...", zap.String("storage_path", fs.cfg.storagePath))
 			case <-ctx.Done():
 				return
@@ -91,7 +91,7 @@ func (fs *FileStorage) Restore() {
 	}
 }
 
-func (fs *FileStorage) StoreMetrics() {
+func (fs *FileStorage) storeMetrics() {	
 	data := make([]model.Metrics, 0)
 	for _, counter := range fs.repository.GetNames(model.Counter) {
 		metricData := fs.repository.GetCounter(counter)
@@ -169,7 +169,7 @@ func (fs *FileStorage) SaveCounter(name string, value int64) error {
 	defer fs.mu.Unlock()
 	if fs.isSyncSave() {
 		res := fs.repository.SaveCounter(name, value)
-		fs.StoreMetrics()
+		fs.storeMetrics()
 		return res
 	}
 	return fs.repository.SaveCounter(name, value)
@@ -180,7 +180,7 @@ func (fs *FileStorage) SaveGauge(name string, value float64) error {
 	defer fs.mu.Unlock()
 	if fs.isSyncSave() {
 		res := fs.repository.SaveGauge(name, value)
-		fs.StoreMetrics()
+		fs.storeMetrics()
 		return res
 	}
 	return fs.repository.SaveGauge(name, value)

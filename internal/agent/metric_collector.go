@@ -17,7 +17,7 @@ type MetricsCollector struct {
 	wg       sync.WaitGroup
 }
 
-func NewMetricColletor(provider service.MetricsProvider, log *zap.Logger) MetricsCollector {
+func NewMetricCollector(provider service.MetricsProvider, log *zap.Logger) MetricsCollector {
 	return MetricsCollector{
 		Provider: provider,
 		log:      log,

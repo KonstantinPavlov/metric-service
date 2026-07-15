@@ -29,7 +29,7 @@ func main() {
 	provider := &service.DefaultProvider{
 		Repository: storage,
 	}
-	collector := agent.NewMetricColletor(provider, zapLogger)
+	collector := agent.NewMetricCollector(provider, zapLogger)
 
 	collector.Start(ctx, time.Duration(flagPollInterval)*time.Second)
 	exporter := agent.NewMetricsExporter(flagServerAddr, provider, http.Client{}, zapLogger)

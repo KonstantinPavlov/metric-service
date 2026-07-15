@@ -91,35 +91,42 @@ func (fs *FileStorage) Restore() {
 	}
 }
 
-func (fs *FileStorage) storeMetrics() {	
+func (fs *FileStorage) storeMetrics() {
 	data := make([]model.Metrics, 0)
 	for _, counter := range fs.repository.GetNames(model.Counter) {
 		metricData := fs.repository.GetCounter(counter)
-		metricValue := metricData.Value.(int64)
-		metric := model.Metrics{
-			ID:    metricData.Name,
-			MType: model.Counter,
-			Delta: &metricValue,
+		if metricValue, ok := metricData.Value.(int64); ok {
+			metric := model.Metrics{
+				ID:    metricData.Name,
+				MType: model.Counter,
+				Delta: &metricValue,
+			}
+			data = append(data, metric)
+		} else {
+			fs.log.Warn("Value type is not int64!", zap.String("name", metricData.Name))
 		}
-		data = append(data, metric)
 	}
 
 	for _, gauge := range fs.repository.GetNames(model.Gauge) {
 		metricData := fs.repository.GetGauge(gauge)
-		metricValue := metricData.Value.(float64)
-		metric := model.Metrics{
-			ID:    metricData.Name,
-			MType: model.Gauge,
-			Value: &metricValue,
+		if metricValue, ok := metricData.Value.(float64); ok {
+			metric := model.Metrics{
+				ID:    metricData.Name,
+				MType: model.Gauge,
+				Value: &metricValue,
+			}
+			data = append(data, metric)
+		} else {
+			fs.log.Warn("Value type is not float64!", zap.String("name", metricData.Name))
 		}
-		data = append(data, metric)
 	}
 
 	err := fs.store(data)
 	if err != nil {
 		fs.log.Error("Failed to store metrics", zap.Error(err))
+	} else {
+		fs.log.Info("Stored metrics", zap.String("storage_path", fs.cfg.storagePath), zap.Int("count", len(data)))
 	}
-	fs.log.Info("Stored metrics", zap.String("storage_path", fs.cfg.storagePath), zap.Int("count", len(data)))
 }
 
 func (fs *FileStorage) store(data any) error {

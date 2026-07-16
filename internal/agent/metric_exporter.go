@@ -1,22 +1,34 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
-	"fmt"
-	"log"
+	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
+	"go.uber.org/zap"
 )
 
 type MetricsExporter struct {
-	ServerUrl string
-	Provider  service.MetricsProvider
-	Client    http.Client
+	serverUrl string
+	provider  service.MetricsProvider
+	client    http.Client
+	log       *zap.Logger
 	wg        sync.WaitGroup
+}
+
+func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger) MetricsExporter {
+	return MetricsExporter{
+		serverUrl: serverUrl,
+		provider:  provider,
+		client:    client,
+		log:       log,
+	}
 }
 
 func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
@@ -29,9 +41,9 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				log.Default().Print("Start exporting metrics...")
+				me.log.Info("Start exporting metrics...")
 				me.Export(ctx)
-				log.Default().Print("End exporting metrics...")
+				me.log.Info("End exporting metrics...")
 			case <-ctx.Done():
 				return
 			}
@@ -44,26 +56,58 @@ func (me *MetricsExporter) Stop() {
 }
 
 func (me *MetricsExporter) Export(ctx context.Context) {
-	for key, value := range me.Provider.GetCounters() {
-		me.postMetric(ctx, model.Counter, key, fmt.Sprint(value))
+	for key, value := range me.provider.GetCounters() {
+		req := model.Metrics{
+			ID:    key,
+			MType: model.Counter,
+			Delta: &value,
+		}
+		me.postMetric(ctx, req)
 
 	}
-	for key, value := range me.Provider.GetGauges() {
-		me.postMetric(ctx, model.Gauge, key, fmt.Sprint(value))
+	for key, value := range me.provider.GetGauges() {
+		req := model.Metrics{
+			ID:    key,
+			MType: model.Gauge,
+			Value: &value,
+		}
+		me.postMetric(ctx, req)
 	}
 }
 
-func (me *MetricsExporter) postMetric(ctx context.Context, metricType string, name string, value string) {
-
-	request, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://"+me.ServerUrl+"/update/%v/%v/%v", metricType, name, value), nil)
-	request.Header.Set("Content-Type", "text/plain")
+func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
+	jsonBytes, err := json.Marshal(req)
 	if err != nil {
-		log.Default().Printf("Failed to create request: %v", err)
+		me.log.Error("Failed to marshall request!", zap.Error(err))
+		return
+	}
+	var compressed bytes.Buffer
+	gzWriter := gzip.NewWriter(&compressed)
+	if _, err := gzWriter.Write(jsonBytes); err != nil {
+		me.log.Error("Failed to compress data!", zap.Error(err))
+		return
+	}
+	if err := gzWriter.Close(); err != nil {
+		me.log.Error("Failed to close compress data!", zap.Error(err))
+		return
 	}
 
-	_, err = me.Client.Do(request)
+	me.log.Debug("Compressed data", zap.Int("before", len(jsonBytes)), zap.Int("after", compressed.Len()))
+	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/update/", &compressed)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Encoding", "gzip")
+	if err != nil {
+		me.log.Error("Failed to create request!", zap.Error(err))
+		return
+	}
+
+	resp, err := me.client.Do(request)
 
 	if err != nil {
-		log.Default().Printf("Error in publishing metric %v with type %v. Error: %v", name, metricType, err)
+		me.log.Error("Error publishing metric", zap.String("name", req.ID), zap.String("metric_type", req.MType), zap.Error(err))
+	}
+
+	if resp != nil && resp.Header.Get("Content-Type") != "application/json" {
+		me.log.Error("Server response content-type is not valid!")
 	}
 }

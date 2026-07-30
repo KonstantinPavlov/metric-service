@@ -11,3 +11,9 @@
 - инициализацию зависимостей (можно вынести в отдельный пакет `internal/app`)
 - настройку и запуск HTTP-сервера (можно вынести в отдельный пакет `internal/router`)
 - обработку сигналов завершения работы приложения
+
+
+#
+### server
+```bash 
+go run . -d postgres://admin:admin123@host.docker.internal:5432/metrics?sslmode=disable

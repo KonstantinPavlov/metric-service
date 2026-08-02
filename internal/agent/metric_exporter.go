@@ -97,18 +97,47 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 	}
 
 	me.log.Debug("Compressed data", zap.Int("before", len(jsonBytes)), zap.Int("after", compressed.Len()))
-	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/updates/", &compressed)
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Content-Encoding", "gzip")
-	if err != nil {
-		me.log.Error("Failed to create request!", zap.Error(err))
-		return
+	compressedBytes := compressed.Bytes()
+	maxAttemps := 4
+	retryDelay := 1 * time.Second
+
+	var resp *http.Response
+
+	for attempt := 1; attempt <= maxAttemps; attempt++ {
+		if err := ctx.Err(); err != nil {
+			me.log.Error("Context cancelled during HTTP retries", zap.Error(err))
+			return
+		}
+		bodyReader := bytes.NewReader(compressedBytes)
+		request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/updates/", bodyReader)
+		if err != nil {
+			me.log.Error("Failed to create request!", zap.Error(err))
+			return
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Content-Encoding", "gzip")
+		resp, err = me.client.Do(request)
+		if err == nil {
+			// all fine!
+			break
+		}
+		if attempt == maxAttemps {
+			me.log.Error("Error publishing metrics after all retries", zap.Int("size", len(requests)), zap.Error(err))
+			return
+		}
+
+		me.log.Warn("Network error occurred, retrying...", zap.Int("attempt", attempt), zap.Error(err))
+
+		select {
+		case <-time.After(retryDelay):
+			retryDelay += 2 * time.Second
+		case <-ctx.Done():
+			me.log.Error("Context cancelled while waiting for next retry", zap.Error(ctx.Err()))
+			return
+		}
 	}
-
-	resp, err := me.client.Do(request)
-
-	if err != nil {
-		me.log.Error("Error publishing metrics", zap.Int("size", len(requests)), zap.Error(err))
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
 	}
 
 	if resp != nil && resp.Header.Get("Content-Type") != "application/json" {

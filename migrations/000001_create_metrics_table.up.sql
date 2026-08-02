@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS public.counters (
+    name VARCHAR(255) NOT NULL PRIMARY KEY,
+    delta BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS public.gauges (
+    name VARCHAR(255) NOT NULL PRIMARY KEY,
+    value DOUBLE PRECISION
+);

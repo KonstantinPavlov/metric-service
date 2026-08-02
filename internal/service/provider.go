@@ -3,6 +3,8 @@ package service
 import (
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
+	"github.com/labstack/gommon/log"
+	"go.uber.org/zap"
 )
 
 type MetricsProvider interface {
@@ -13,13 +15,30 @@ type MetricsProvider interface {
 }
 
 type DefaultProvider struct {
-	Repository repository.MetricRepository
+	repository repository.MetricRepository
+	log        *zap.Logger
+}
+
+func NewDefaultProvider(repository repository.MetricRepository, log *zap.Logger) *DefaultProvider {
+	return &DefaultProvider{
+		repository: repository,
+		log:        log,
+	}
 }
 
 func (p *DefaultProvider) GetCounters() map[string]int64 {
 	res := make(map[string]int64)
-	for _, counter := range p.Repository.GetNames(model.Counter) {
-		metric := p.Repository.GetCounter(counter)
+	counters, err := p.repository.GetNames(model.Counter)
+	if err != nil {
+		log.Error("Failed to getNames for Counters!", zap.Error(err))
+		return res
+	}
+	for _, counter := range counters {
+		metric, err := p.repository.GetCounter(counter)
+		if err != nil {
+			log.Error("Failed to get counter", zap.String("name", counter), zap.Error(err))
+			continue
+		}
 		if metric != nil {
 			val, ok := metric.Value.(int64)
 			if ok {
@@ -33,8 +52,17 @@ func (p *DefaultProvider) GetCounters() map[string]int64 {
 
 func (p *DefaultProvider) GetGauges() map[string]float64 {
 	res := make(map[string]float64)
-	for _, gauge := range p.Repository.GetNames(model.Gauge) {
-		metric := p.Repository.GetGauge(gauge)
+	gauges, err := p.repository.GetNames(model.Gauge)
+	if err != nil {
+		log.Error("Failed to getNames for Gauges!", zap.Error(err))
+		return res
+	}
+	for _, gauge := range gauges {
+		metric, err := p.repository.GetGauge(gauge)
+		if err != nil {
+			log.Error("Failed to get gauge", zap.String("name", gauge), zap.Error(err))
+			continue
+		}
 		if metric != nil {
 			val, ok := metric.Value.(float64)
 			if ok {
@@ -46,9 +74,9 @@ func (p *DefaultProvider) GetGauges() map[string]float64 {
 }
 
 func (p *DefaultProvider) SaveCounter(name string, value int64) error {
-	return p.Repository.SaveCounter(name, value)
+	return p.repository.SaveCounter(name, value)
 }
 
 func (p *DefaultProvider) SaveGauge(name string, value float64) error {
-	return p.Repository.SaveGauge(name, value)
+	return p.repository.SaveGauge(name, value)
 }

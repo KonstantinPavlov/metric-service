@@ -14,6 +14,7 @@ import (
 )
 
 type FileStorage struct {
+	ctx        context.Context
 	mu         sync.RWMutex
 	wg         sync.WaitGroup
 	cfg        fileStorageCfg
@@ -27,8 +28,9 @@ type fileStorageCfg struct {
 	restore       bool
 }
 
-func NewFileStorage(interval int, path string, restore bool, repository MetricRepository, log *zap.Logger) *FileStorage {
+func NewFileStorage(ctx context.Context, interval int, path string, restore bool, repository MetricRepository, log *zap.Logger) *FileStorage {
 	return &FileStorage{
+		ctx: ctx,
 		cfg: fileStorageCfg{
 			storeInterval: interval,
 			storagePath:   path,
@@ -39,14 +41,18 @@ func NewFileStorage(interval int, path string, restore bool, repository MetricRe
 	}
 }
 
-func (fs *FileStorage) Start(ctx context.Context) {
+func (fs *FileStorage) Ping() error {
+	return nil
+}
+
+func (fs *FileStorage) Start() error {
 	if fs.cfg.restore {
 		fs.log.Info("Start restore metrics from storage", zap.String("storage_path", fs.cfg.storagePath))
 		fs.Restore()
 		fs.log.Info("End restore metrics from storage", zap.String("storage_path", fs.cfg.storagePath))
 	}
 	if fs.isSyncSave() {
-		return
+		return nil
 	}
 	fs.wg.Add(1)
 	go func() {
@@ -61,11 +67,12 @@ func (fs *FileStorage) Start(ctx context.Context) {
 				fs.log.Info("Start async store metrics...", zap.String("storage_path", fs.cfg.storagePath))
 				fs.storeMetricsAsync()
 				fs.log.Info("End async store metrics...", zap.String("storage_path", fs.cfg.storagePath))
-			case <-ctx.Done():
+			case <-fs.ctx.Done():
 				return
 			}
 		}
 	}()
+	return nil
 }
 
 func (fs *FileStorage) Stop() {
@@ -99,8 +106,17 @@ func (fs *FileStorage) storeMetricsAsync() {
 
 func (fs *FileStorage) storeMetrics() {
 	data := make([]model.Metrics, 0)
-	for _, counter := range fs.repository.GetNames(model.Counter) {
-		metricData := fs.repository.GetCounter(counter)
+	counters, err := fs.repository.GetNames(model.Counter)
+	if err != nil {
+		fs.log.Error("Failed to GetNames for counters!", zap.Error(err))
+		return
+	}
+	for _, counter := range counters {
+		metricData, err := fs.repository.GetCounter(counter)
+		if err != nil {
+			fs.log.Error("Failed to GetCounter", zap.String("name", counter), zap.Error(err))
+			continue
+		}
 		if metricValue, ok := metricData.Value.(int64); ok {
 			metric := model.Metrics{
 				ID:    metricData.Name,
@@ -112,9 +128,17 @@ func (fs *FileStorage) storeMetrics() {
 			fs.log.Warn("Value type is not int64!", zap.String("name", metricData.Name))
 		}
 	}
-
-	for _, gauge := range fs.repository.GetNames(model.Gauge) {
-		metricData := fs.repository.GetGauge(gauge)
+	gauges, err := fs.repository.GetNames(model.Gauge)
+	if err != nil {
+		fs.log.Error("Failed to GetNames for gauges!", zap.Error(err))
+		return
+	}
+	for _, gauge := range gauges {
+		metricData, err := fs.repository.GetGauge(gauge)
+		if err != nil {
+			fs.log.Error("Failed to GetGauge", zap.String("name", gauge), zap.Error(err))
+			continue
+		}
 		if metricValue, ok := metricData.Value.(float64); ok {
 			metric := model.Metrics{
 				ID:    metricData.Name,
@@ -127,7 +151,7 @@ func (fs *FileStorage) storeMetrics() {
 		}
 	}
 
-	err := fs.store(data)
+	err = fs.store(data)
 	if err != nil {
 		fs.log.Error("Failed to store metrics", zap.Error(err))
 	} else {
@@ -165,19 +189,19 @@ func (fs *FileStorage) restore() ([]model.Metrics, error) {
 	return data, nil
 }
 
-func (fs *FileStorage) GetNames(metricType string) []string {
+func (fs *FileStorage) GetNames(metricType string) ([]string, error) {
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
 	return fs.repository.GetNames(metricType)
 }
 
-func (fs *FileStorage) GetCounter(name string) *MetricData {
+func (fs *FileStorage) GetCounter(name string) (*MetricData, error) {
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
 	return fs.repository.GetCounter(name)
 }
 
-func (fs *FileStorage) GetGauge(name string) *MetricData {
+func (fs *FileStorage) GetGauge(name string) (*MetricData, error) {
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
 	return fs.repository.GetGauge(name)

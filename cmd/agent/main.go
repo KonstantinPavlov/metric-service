@@ -26,9 +26,7 @@ func main() {
 	defer stop()
 
 	storage := repository.NewMemStorage()
-	provider := &service.DefaultProvider{
-		Repository: storage,
-	}
+	provider := service.NewDefaultProvider(storage, zapLogger)
 	collector := agent.NewMetricCollector(provider, zapLogger)
 
 	collector.Start(ctx, time.Duration(flagPollInterval)*time.Second)

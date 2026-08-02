@@ -86,16 +86,14 @@ func TestMetricsExporter_Export(t *testing.T) {
 	defer zapLogger.Sync()
 	callCounter := 0
 	storage := repository.NewMemStorage()
-	provider := service.DefaultProvider{
-		Repository: storage,
-	}
+	provider := service.NewDefaultProvider(storage, zapLogger)
 	provider.SaveCounter("some-counter", 1)
 	provider.SaveGauge("some-gauge", 1)
 	header := http.Header{}
 	header.Add("Content-Type", "application/json")
 	exporter := NewMetricsExporter(
 		"",
-		&provider,
+		provider,
 		http.Client{
 			Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				callCounter++

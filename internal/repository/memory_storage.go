@@ -19,42 +19,54 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (ms *MemStorage) GetNames(metricType string) []string {
+func (ms *MemStorage) Ping() error {
+	return nil
+}
+
+func (ms *MemStorage) Start() error {
+	return nil
+}
+
+func (ms *MemStorage) Stop() {
+
+}
+
+func (ms *MemStorage) GetNames(metricType string) ([]string, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	switch metricType {
 	case model.Counter:
-		return getMapKeys(ms.Counters)
+		return getMapKeys(ms.Counters), nil
 	case model.Gauge:
-		return getMapKeys(ms.Gauges)
+		return getMapKeys(ms.Gauges), nil
 	}
-	return make([]string, 0)
+	return make([]string, 0), nil
 }
 
-func (ms *MemStorage) GetCounter(name string) *MetricData {
+func (ms *MemStorage) GetCounter(name string) (*MetricData, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	val, ok := ms.Counters[name]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	return &MetricData{
 		Name:  name,
 		Value: val,
-	}
+	}, nil
 }
 
-func (ms *MemStorage) GetGauge(name string) *MetricData {
+func (ms *MemStorage) GetGauge(name string) (*MetricData, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	val, ok := ms.Gauges[name]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	return &MetricData{
 		Name:  name,
 		Value: val,
-	}
+	}, nil
 }
 
 func (ms *MemStorage) SaveCounter(name string, value int64) error {

@@ -35,32 +35,37 @@ func main() {
 	}
 }
 
+func defineStorage(ctx context.Context, zapLogger *zap.Logger) repository.MetricRepository {
+	if flagDbDSN != "" {
+		return repository.NewPgStorage(ctx, flagDbDSN, zapLogger)
+	}
+	memStorage := repository.NewMemStorage()
+	if flagStorePath != "" {
+		return repository.NewFileStorage(
+			ctx,
+			flagStoreIntervalSeconds,
+			flagStorePath,
+			flagRestore,
+			memStorage,
+			zapLogger,
+		)
+	}
+	return memStorage
+}
+
 func run(zapLogger *zap.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	memStorage := repository.NewMemStorage()
-	repo := repository.NewFileStorage(
-		flagStoreIntervalSeconds,
-		flagStorePath,
-		flagRestore,
-		memStorage,
-		zapLogger,
-	)
-	// start file storage
-	repo.Start(ctx)
-
-	//Pg Storage
-	pgStorage := repository.NewPgStorage(ctx, flagDbDSN, zapLogger)
-	err := pgStorage.Start()
+	storage := defineStorage(ctx, zapLogger)
+	err := storage.Start()
 	if err != nil {
 		return err
 	}
-
 	// setup of echo web server
 	webHandler := handler.NewMetricHandler(
-		repo,
+		storage,
 		zapLogger,
 	)
 
@@ -73,7 +78,7 @@ func run(zapLogger *zap.Logger) error {
 		Template: tmpl,
 	}
 
-	pgHandler := handler.NewPgHandler(pgStorage, zapLogger)
+	pgHandler := handler.NewPgHandler(storage, zapLogger)
 
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
@@ -96,8 +101,7 @@ func run(zapLogger *zap.Logger) error {
 
 	// gracefull shutdown
 	<-ctx.Done()
-	repo.Stop()
-	pgStorage.Stop()
+	storage.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {

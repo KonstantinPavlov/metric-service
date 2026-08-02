@@ -78,16 +78,14 @@ func TestMetricsCollector_Collect(t *testing.T) {
 	defer zapLogger.Sync()
 	storage := repository.NewMemStorage()
 
-	provider := service.DefaultProvider{
-		Repository: storage,
-	}
+	provider := service.NewDefaultProvider(storage, zapLogger)
 
 	collector := MetricsCollector{
-		Provider: &provider,
+		Provider: provider,
 		log:      zapLogger,
 	}
 
-	provider.Repository.SaveCounter("PollCount", 5)
+	storage.SaveCounter("PollCount", 5)
 
 	collector.Collect()
 	assert.Equal(t, int64(6), storage.Counters["PollCount"])

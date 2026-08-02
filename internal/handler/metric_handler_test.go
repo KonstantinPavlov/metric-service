@@ -69,6 +69,14 @@ func (m *MockMetricRepository) SaveGauge(name string, value float64) error {
 	}
 	return nil
 }
+func (m *MockMetricRepository) SaveCounters(counters []repository.MetricData) error {
+
+	return nil
+}
+
+func (m *MockMetricRepository) SaveGauges(gauges []repository.MetricData) error {
+	return nil
+}
 
 func TestMetricHandler_HandleParamUpdate(t *testing.T) {
 

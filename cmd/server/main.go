@@ -87,6 +87,7 @@ func run(zapLogger *zap.Logger) error {
 	httpServer.Renderer = renderer
 	httpServer.POST("/update/:type/:name/:value", webHandler.HandleParamUpdate)
 	httpServer.POST("/update/", webHandler.HandleBodyUpdate)
+	httpServer.POST("/updates/", webHandler.HandleUpdates)
 	httpServer.GET("/value/:type/:name", webHandler.HandleGetValue)
 	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)

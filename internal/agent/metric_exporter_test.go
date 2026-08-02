@@ -107,5 +107,5 @@ func TestMetricsExporter_Export(t *testing.T) {
 		zapLogger,
 	)
 	exporter.Export(context.Background())
-	assert.Equal(t, 2, callCounter, "Export Method calling http.Client.Post must be 2 times - for gauge and for counter")
+	assert.Equal(t, 1, callCounter, "Export Method calling http.Client.Post 1 times - mow it is batch!")
 }

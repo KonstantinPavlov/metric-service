@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -56,27 +57,30 @@ func (me *MetricsExporter) Stop() {
 }
 
 func (me *MetricsExporter) Export(ctx context.Context) {
+	requests := make([]model.Metrics, 0)
 	for key, value := range me.provider.GetCounters() {
-		req := model.Metrics{
+		requests = append(requests, model.Metrics{
 			ID:    key,
 			MType: model.Counter,
 			Delta: &value,
-		}
-		me.postMetric(ctx, req)
-
+		})
 	}
 	for key, value := range me.provider.GetGauges() {
-		req := model.Metrics{
+		requests = append(requests, model.Metrics{
 			ID:    key,
 			MType: model.Gauge,
 			Value: &value,
-		}
-		me.postMetric(ctx, req)
+		})
 	}
+	if len(requests) == 0 {
+		me.log.Warn("Metrics are empty!")
+		return
+	}
+	me.postMetrics(ctx, requests)
 }
 
-func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
-	jsonBytes, err := json.Marshal(req)
+func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Metrics) {
+	jsonBytes, err := json.Marshal(requests)
 	if err != nil {
 		me.log.Error("Failed to marshall request!", zap.Error(err))
 		return
@@ -93,7 +97,7 @@ func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
 	}
 
 	me.log.Debug("Compressed data", zap.Int("before", len(jsonBytes)), zap.Int("after", compressed.Len()))
-	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/update/", &compressed)
+	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/updates/", &compressed)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Content-Encoding", "gzip")
 	if err != nil {
@@ -104,10 +108,16 @@ func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
 	resp, err := me.client.Do(request)
 
 	if err != nil {
-		me.log.Error("Error publishing metric", zap.String("name", req.ID), zap.String("metric_type", req.MType), zap.Error(err))
+		me.log.Error("Error publishing metrics", zap.Int("size", len(requests)), zap.Error(err))
 	}
 
 	if resp != nil && resp.Header.Get("Content-Type") != "application/json" {
 		me.log.Error("Server response content-type is not valid!")
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			me.log.Error("Error reading response body", zap.Error(err))
+			return
+		}
+		me.log.Info("Server response body", zap.String("body", string(bodyBytes)))
 	}
 }

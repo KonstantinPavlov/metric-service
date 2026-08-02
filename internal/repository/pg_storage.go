@@ -9,8 +9,8 @@ import (
 
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/gommon/log"
@@ -216,6 +216,70 @@ func (ps *PgStorage) SaveGauge(name string, value float64) error {
 	_, err := ps.pool.Exec(ps.ctx, query, name, value)
 	if err != nil {
 		return fmt.Errorf("Failed to save gauge %q: %w", name, err)
+	}
+
+	return nil
+}
+
+func (ps *PgStorage) SaveCounters(counters []MetricData) error {
+	if !ps.started() {
+		return fmt.Errorf("Storage not started!")
+	}
+
+	if len(counters) == 0 {
+		return nil
+	}
+
+	query := `
+		INSERT INTO public.counters (name, delta) 
+		VALUES ($1, $2)
+		ON CONFLICT (name) 
+		DO UPDATE SET delta = counters.delta + EXCLUDED.delta;
+	`
+	batch := &pgx.Batch{}
+	for _, c := range counters {
+		batch.Queue(query, c.Name, c.Value)
+	}
+	br := ps.pool.SendBatch(ps.ctx, batch)
+	defer br.Close()
+
+	// Проверяем статус выполнения каждого элемента пакета
+	for i := 0; i < len(counters); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			return fmt.Errorf("Failed to execute batch counter item %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+func (ps *PgStorage) SaveGauges(gauges []MetricData) error {
+	if !ps.started() {
+		return fmt.Errorf("Storage not started!")
+	}
+	if len(gauges) == 0 {
+		return nil
+	}
+	query := `
+		INSERT INTO public.gauges (name, value) 
+		VALUES ($1, $2)
+		ON CONFLICT (name) 
+		DO UPDATE SET value = EXCLUDED.value;
+	`
+	batch := &pgx.Batch{}
+	for _, g := range gauges {
+		batch.Queue(query, g.Name, g.Value)
+	}
+
+	br := ps.pool.SendBatch(ps.ctx, batch)
+	defer br.Close()
+
+	for i := 0; i < len(gauges); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			return fmt.Errorf("Failed to execute batch item %d: %w", i, err)
+		}
 	}
 
 	return nil

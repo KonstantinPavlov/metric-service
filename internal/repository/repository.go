@@ -6,6 +6,8 @@ type MetricRepository interface {
 	GetGauge(name string) (*MetricData, error)
 	SaveCounter(name string, value int64) error
 	SaveGauge(name string, value float64) error
+	SaveCounters(counters []MetricData) error
+	SaveGauges(gauges []MetricData) error
 	Ping() error
 	Start() error
 	Stop()

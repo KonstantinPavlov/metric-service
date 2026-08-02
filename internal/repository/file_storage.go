@@ -229,6 +229,28 @@ func (fs *FileStorage) SaveGauge(name string, value float64) error {
 	return fs.repository.SaveGauge(name, value)
 }
 
+func (fs *FileStorage) SaveCounters(counters []MetricData) error {
+	for _, counter := range counters {
+		if metricValue, ok := counter.Value.(int64); ok {
+			fs.SaveCounter(counter.Name, metricValue)
+		} else {
+			return fmt.Errorf("Value is not a int64!")
+		}
+	}
+	return nil
+}
+
+func (fs *FileStorage) SaveGauges(gauges []MetricData) error {
+	for _, counter := range gauges {
+		if metricValue, ok := counter.Value.(float64); ok {
+			fs.SaveGauge(counter.Name, metricValue)
+		} else {
+			return fmt.Errorf("Value is not a float64!")
+		}
+	}
+	return nil
+}
+
 func (fs *FileStorage) isSyncSave() bool {
 	return fs.cfg.storeInterval <= 0
 }

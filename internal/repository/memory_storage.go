@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/KonstantinPavlov/metric-service/internal/model"
@@ -80,6 +81,28 @@ func (ms *MemStorage) SaveGauge(name string, value float64) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.Gauges[name] = value
+	return nil
+}
+
+func (ms *MemStorage) SaveCounters(counters []MetricData) error {
+	for _, counter := range counters {
+		if metricValue, ok := counter.Value.(int64); ok {
+			ms.SaveCounter(counter.Name, metricValue)
+		} else {
+			return fmt.Errorf("Value is not a int64!")
+		}
+	}
+	return nil
+}
+
+func (ms *MemStorage) SaveGauges(gauges []MetricData) error {
+	for _, counter := range gauges {
+		if metricValue, ok := counter.Value.(float64); ok {
+			ms.SaveGauge(counter.Name, metricValue)
+		} else {
+			return fmt.Errorf("Value is not a float64!")
+		}
+	}
 	return nil
 }
 

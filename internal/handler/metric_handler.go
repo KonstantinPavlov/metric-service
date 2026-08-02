@@ -229,3 +229,60 @@ func (mh *MetricHandler) HandleParamUpdate(c echo.Context) error {
 	}
 	return c.String(http.StatusOK, "metric saved")
 }
+
+func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
+	requests := &[]model.Metrics{}
+	err := c.Bind(requests)
+	if err != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("%v", err))
+	}
+
+	if len(*requests) == 0 {
+		return c.String(http.StatusBadRequest, "Received empty payload!")
+	}
+
+	groups := make(map[string][]model.Metrics)
+	for _, m := range *requests {
+		groups[m.MType] = append(groups[m.MType], m)
+	}
+
+	for mType, metrics := range groups {
+		switch mType {
+		case model.Counter:
+			data := make([]repository.MetricData, 0)
+			for _, metric := range metrics {
+				if metric.Delta == nil {
+					return c.String(http.StatusBadRequest, "Delta not specified!")
+				}
+				data = append(data, repository.MetricData{
+					Name:  metric.ID,
+					Value: *metric.Delta,
+				})
+			}
+			mh.log.Info("Saving counters", zap.Int("size", len(data)))
+			err = mh.Repository.SaveCounters(data)
+			if err != nil {
+				return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
+			}
+		case model.Gauge:
+			data := make([]repository.MetricData, 0)
+			for _, metric := range metrics {
+				if metric.Value == nil {
+					return c.String(http.StatusBadRequest, "Value not specified!")
+				}
+				data = append(data, repository.MetricData{
+					Name:  metric.ID,
+					Value: *metric.Value,
+				})
+			}
+			mh.log.Info("Saving gauges", zap.Int("size", len(data)))
+			err = mh.Repository.SaveGauges(data)
+			if err != nil {
+				return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save counter: %v", err))
+			}
+		default:
+			return c.String(http.StatusBadRequest, "Unkwnown metric type!")
+		}
+	}
+	return c.JSON(http.StatusOK, requests)
+}

@@ -82,13 +82,14 @@ func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestMetricsExporter_Export(t *testing.T) {
+
 	zapLogger, _ := zap.NewDevelopment()
 	defer zapLogger.Sync()
 	callCounter := 0
 	storage := repository.NewMemStorage()
 	provider := service.NewDefaultProvider(storage, zapLogger)
-	provider.SaveCounter("some-counter", 1)
-	provider.SaveGauge("some-gauge", 1)
+	provider.SaveCounter(t.Context(), "some-counter", 1)
+	provider.SaveGauge(t.Context(), "some-gauge", 1)
 	header := http.Header{}
 	header.Add("Content-Type", "application/json")
 	exporter := NewMetricsExporter(

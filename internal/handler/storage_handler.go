@@ -9,20 +9,20 @@ import (
 	"go.uber.org/zap"
 )
 
-type PgHandler struct {
+type StorageHandler struct {
 	storage repository.StoragePinger
 	log     *zap.Logger
 }
 
-func NewPgHandler(storage repository.StoragePinger, log *zap.Logger) *PgHandler {
-	return &PgHandler{
+func NewStorageHandler(storage repository.StoragePinger, log *zap.Logger) *StorageHandler {
+	return &StorageHandler{
 		storage: storage,
 		log:     log,
 	}
 }
 
-func (ph *PgHandler) HandlePing(c echo.Context) error {
-	err := ph.storage.Ping()
+func (ph *StorageHandler) HandlePing(c echo.Context) error {
+	err := ph.storage.Ping(c.Request().Context())
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to ping Db: %v", err))
 	}

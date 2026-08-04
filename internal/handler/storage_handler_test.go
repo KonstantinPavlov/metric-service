@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ type MockStorage struct {
 	mock.Mock
 }
 
-func (m *MockStorage) Ping() error {
+func (m *MockStorage) Ping(ctx context.Context) error {
 	args := m.Called()
 	return args.Error(0)
 }
@@ -26,13 +27,13 @@ func TestHandlePing(t *testing.T) {
 	t.Run("success ping", func(t *testing.T) {
 		mockStorage := new(MockStorage)
 		mockStorage.On("Ping").Return(nil)
-		
+
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		h := NewPgHandler(mockStorage, logger)
+		h := NewStorageHandler(mockStorage, logger)
 		err := h.HandlePing(c)
 
 		assert.NoError(t, err)
@@ -50,7 +51,7 @@ func TestHandlePing(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		h := NewPgHandler(mockStorage, logger)
+		h := NewStorageHandler(mockStorage, logger)
 		err := h.HandlePing(c)
 
 		assert.NoError(t, err)

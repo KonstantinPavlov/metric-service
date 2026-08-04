@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -19,11 +20,11 @@ type MockMetricRepository struct {
 	SaveGaugeFunc   func(name string, value float64) error
 }
 
-func (m *MockMetricRepository) Start() error {
+func (m *MockMetricRepository) Start(ctx context.Context) error {
 	return nil
 }
 
-func (m *MockMetricRepository) Ping() error {
+func (m *MockMetricRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
@@ -31,11 +32,11 @@ func (m *MockMetricRepository) Stop() {
 
 }
 
-func (m *MockMetricRepository) GetNames(metricTYpe string) ([]string, error) {
+func (m *MockMetricRepository) GetNames(ctx context.Context, metricTYpe string) ([]string, error) {
 	return make([]string, 0), nil
 }
 
-func (m *MockMetricRepository) GetCounter(name string) (*repository.MetricData, error) {
+func (m *MockMetricRepository) GetCounter(ctx context.Context, name string) (*repository.MetricData, error) {
 	if name == "special-counter" {
 		return &repository.MetricData{
 			Name:  "special-counter",
@@ -45,7 +46,7 @@ func (m *MockMetricRepository) GetCounter(name string) (*repository.MetricData, 
 
 	return nil, nil
 }
-func (m *MockMetricRepository) GetGauge(name string) (*repository.MetricData, error) {
+func (m *MockMetricRepository) GetGauge(ctx context.Context, name string) (*repository.MetricData, error) {
 	if name == "special-gauge" {
 		return &repository.MetricData{
 			Name:  "special-gauge",
@@ -56,25 +57,25 @@ func (m *MockMetricRepository) GetGauge(name string) (*repository.MetricData, er
 	return nil, nil
 }
 
-func (m *MockMetricRepository) SaveCounter(name string, value int64) error {
+func (m *MockMetricRepository) SaveCounter(ctx context.Context, name string, value int64) error {
 	if m.SaveCounterFunc != nil {
 		return m.SaveCounterFunc(name, value)
 	}
 	return nil
 }
 
-func (m *MockMetricRepository) SaveGauge(name string, value float64) error {
+func (m *MockMetricRepository) SaveGauge(ctx context.Context, name string, value float64) error {
 	if m.SaveGaugeFunc != nil {
 		return m.SaveGaugeFunc(name, value)
 	}
 	return nil
 }
-func (m *MockMetricRepository) SaveCounters(counters []repository.MetricData) error {
 
-	return nil
-}
-
-func (m *MockMetricRepository) SaveGauges(gauges []repository.MetricData) error {
+func (m *MockMetricRepository) SaveMetrics(
+	ctx context.Context,
+	counters []repository.MetricData,
+	gauges []repository.MetricData,
+) error {
 	return nil
 }
 

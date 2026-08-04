@@ -85,9 +85,9 @@ func TestMetricsCollector_Collect(t *testing.T) {
 		log:      zapLogger,
 	}
 
-	storage.SaveCounter("PollCount", 5)
+	storage.SaveCounter(t.Context(),"PollCount", 5)
 
-	collector.Collect()
+	collector.Collect(t.Context())
 	assert.Equal(t, int64(6), storage.Counters["PollCount"])
 
 	assert.Contains(t, storage.Gauges, "RandomValue")

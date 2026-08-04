@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -20,11 +21,11 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func (ms *MemStorage) Ping() error {
+func (ms *MemStorage) Ping(_ context.Context) error {
 	return nil
 }
 
-func (ms *MemStorage) Start() error {
+func (ms *MemStorage) Start(_ context.Context) error {
 	return nil
 }
 
@@ -32,7 +33,7 @@ func (ms *MemStorage) Stop() {
 
 }
 
-func (ms *MemStorage) GetNames(metricType string) ([]string, error) {
+func (ms *MemStorage) GetNames(_ context.Context, metricType string) ([]string, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	switch metricType {
@@ -44,7 +45,7 @@ func (ms *MemStorage) GetNames(metricType string) ([]string, error) {
 	return make([]string, 0), nil
 }
 
-func (ms *MemStorage) GetCounter(name string) (*MetricData, error) {
+func (ms *MemStorage) GetCounter(_ context.Context, name string) (*MetricData, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	val, ok := ms.Counters[name]
@@ -57,7 +58,7 @@ func (ms *MemStorage) GetCounter(name string) (*MetricData, error) {
 	}, nil
 }
 
-func (ms *MemStorage) GetGauge(name string) (*MetricData, error) {
+func (ms *MemStorage) GetGauge(_ context.Context, name string) (*MetricData, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	val, ok := ms.Gauges[name]
@@ -70,35 +71,35 @@ func (ms *MemStorage) GetGauge(name string) (*MetricData, error) {
 	}, nil
 }
 
-func (ms *MemStorage) SaveCounter(name string, value int64) error {
+func (ms *MemStorage) SaveCounter(_ context.Context, name string, value int64) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.Counters[name] += value
 	return nil
 }
 
-func (ms *MemStorage) SaveGauge(name string, value float64) error {
+func (ms *MemStorage) SaveGauge(_ context.Context, name string, value float64) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.Gauges[name] = value
 	return nil
 }
 
-func (ms *MemStorage) SaveCounters(counters []MetricData) error {
+func (ms *MemStorage) SaveMetrics(
+	ctx context.Context,
+	counters []MetricData,
+	gauges []MetricData,
+) error {
 	for _, counter := range counters {
 		if metricValue, ok := counter.Value.(int64); ok {
-			ms.SaveCounter(counter.Name, metricValue)
+			ms.SaveCounter(ctx, counter.Name, metricValue)
 		} else {
 			return fmt.Errorf("Value is not a int64!")
 		}
 	}
-	return nil
-}
-
-func (ms *MemStorage) SaveGauges(gauges []MetricData) error {
 	for _, counter := range gauges {
 		if metricValue, ok := counter.Value.(float64); ok {
-			ms.SaveGauge(counter.Name, metricValue)
+			ms.SaveGauge(ctx, counter.Name, metricValue)
 		} else {
 			return fmt.Errorf("Value is not a float64!")
 		}

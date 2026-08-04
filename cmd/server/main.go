@@ -35,14 +35,13 @@ func main() {
 	}
 }
 
-func defineStorage(ctx context.Context, zapLogger *zap.Logger) repository.MetricRepository {
+func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
 	if flagDbDSN != "" {
-		return repository.NewPgStorage(ctx, flagDbDSN, zapLogger)
+		return repository.NewPgStorage(flagDbDSN, zapLogger)
 	}
 	memStorage := repository.NewMemStorage()
 	if flagStorePath != "" {
 		return repository.NewFileStorage(
-			ctx,
 			flagStoreIntervalSeconds,
 			flagStorePath,
 			flagRestore,
@@ -58,12 +57,16 @@ func run(zapLogger *zap.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	storage := defineStorage(ctx, zapLogger)
-	err := storage.Start()
-	if err != nil {
-		return err
-	}
-	// setup of echo web server
+	storage := defineStorage(zapLogger)
+	var storageErr error
+	go func() {
+		if err := storage.Start(ctx); err != nil {
+			zapLogger.Error("Storage failed to start", zap.Error(err))
+			storageErr = err
+			stop()
+		}
+	}()
+
 	webHandler := handler.NewMetricHandler(
 		storage,
 		zapLogger,
@@ -78,7 +81,7 @@ func run(zapLogger *zap.Logger) error {
 		Template: tmpl,
 	}
 
-	pgHandler := handler.NewPgHandler(storage, zapLogger)
+	storageHandler := handler.NewStorageHandler(storage, zapLogger)
 
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
@@ -91,12 +94,13 @@ func run(zapLogger *zap.Logger) error {
 	httpServer.GET("/value/:type/:name", webHandler.HandleGetValue)
 	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)
-	httpServer.GET("/ping", pgHandler.HandlePing)
+	httpServer.GET("/ping", storageHandler.HandlePing)
 
 	go func() {
+		zapLogger.Info("Starting Web server...")
 		err := httpServer.Start(flagRunAddr)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))
+			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))			
 		}
 	}()
 
@@ -109,5 +113,8 @@ func run(zapLogger *zap.Logger) error {
 		zapLogger.Fatal("Gracefull shutdown failed", zap.Error(err))
 	}
 	zapLogger.Info("Web server stopped")
+	if storageErr != nil {
+		return storageErr
+	}
 	return nil
 }

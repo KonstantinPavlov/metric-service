@@ -58,14 +58,14 @@ func (me *MetricsExporter) Stop() {
 
 func (me *MetricsExporter) Export(ctx context.Context) {
 	requests := make([]model.Metrics, 0)
-	for key, value := range me.provider.GetCounters() {
+	for key, value := range me.provider.GetCounters(ctx) {
 		requests = append(requests, model.Metrics{
 			ID:    key,
 			MType: model.Counter,
 			Delta: &value,
 		})
 	}
-	for key, value := range me.provider.GetGauges() {
+	for key, value := range me.provider.GetGauges(ctx) {
 		requests = append(requests, model.Metrics{
 			ID:    key,
 			MType: model.Gauge,

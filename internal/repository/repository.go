@@ -1,16 +1,21 @@
 package repository
 
+import "context"
+
 type MetricRepository interface {
-	GetNames(metricType string) ([]string, error)
-	GetCounter(name string) (*MetricData, error)
-	GetGauge(name string) (*MetricData, error)
-	SaveCounter(name string, value int64) error
-	SaveGauge(name string, value float64) error
-	SaveCounters(counters []MetricData) error
-	SaveGauges(gauges []MetricData) error
-	Ping() error
-	Start() error
-	Stop()
+	GetNames(ctx context.Context, metricType string) ([]string, error)
+	GetCounter(ctx context.Context, name string) (*MetricData, error)
+	GetGauge(ctx context.Context, name string) (*MetricData, error)
+	SaveCounter(ctx context.Context, name string, value int64) error
+	SaveGauge(ctx context.Context, name string, value float64) error
+	SaveMetrics(
+		ctx context.Context,
+		counters []MetricData,
+		gauges []MetricData,
+	) error
+	Ping(ctx context.Context) error
+	Start(ctx context.Context) error
+	Stop()	
 }
 
 type MetricData struct {

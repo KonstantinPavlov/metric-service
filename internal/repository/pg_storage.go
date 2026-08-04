@@ -11,28 +11,23 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/pgerrors"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	migratePgx "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/labstack/gommon/log"
 	"go.uber.org/zap"
 )
 
 type PgStorage struct {
-	ctx        context.Context
 	connString string
 	log        *zap.Logger
 	pool       *pgxpool.Pool
 }
 
-type StoragePinger interface {
-	Ping() error
-}
-
-func NewPgStorage(ctx context.Context, connString string, log *zap.Logger) *PgStorage {
+func NewPgStorage(connString string, log *zap.Logger) *PgStorage {
 	return &PgStorage{
-		ctx:        ctx,
 		connString: connString,
 		log:        log,
 	}
@@ -76,26 +71,30 @@ func executeWithRetry(ctx context.Context, logger *zap.Logger, operation func() 
 	return nil
 }
 
-func (ps *PgStorage) Start() error {
+func (ps *PgStorage) Start(ctx context.Context) error {
 	if ps.connString == "" {
 		log.Warn("Connection string is empty! Postgres Storage not started!")
 	} else {
-		pool, err := pgxpool.New(ps.ctx, ps.connString)
+		pool, err := pgxpool.New(ctx, ps.connString)
 		if err != nil {
 			return err
 		}
 		ps.log.Info("Postgres Storage started!")
 		ps.pool = pool
 		// Start migartions
-		err = executeWithRetry(ps.ctx, ps.log, func() error {
+		err = executeWithRetry(ctx, ps.log, func() error {
 			sourceURL := "file://migrations/."
-			migrationURL := "pgx5" + ps.connString[8:]
-			m, err := migrate.New(sourceURL, migrationURL)
+			db := stdlib.OpenDBFromPool(ps.pool)
+			driver, err := migratePgx.WithInstance(db, &migratePgx.Config{})
 			if err != nil {
-				return err
+				return fmt.Errorf("Аailed to create migrate driver: %w", err)
+			}
+
+			m, err := migrate.NewWithDatabaseInstance(sourceURL, "pgx5", driver)
+			if err != nil {
+				return fmt.Errorf("Аailed to initialize migrate: %w", err)
 			}
 			defer m.Close()
-
 			ps.log.Info("Running database migrations from disk...")
 			if err := m.Up(); err != nil {
 				if errors.Is(err, migrate.ErrNoChange) {
@@ -124,12 +123,12 @@ func (ps *PgStorage) Stop() {
 	}
 }
 
-func (ps *PgStorage) Ping() error {
+func (ps *PgStorage) Ping(ctx context.Context) error {
 	if !ps.started() {
 		return fmt.Errorf("PgStorage not started!")
 	}
-	return executeWithRetry(ps.ctx, ps.log, func() error {
-		err := ps.pool.Ping(ps.ctx)
+	return executeWithRetry(ctx, ps.log, func() error {
+		err := ps.pool.Ping(ctx)
 		if err != nil {
 			log.Error("Failed to ping db!", zap.Error(err))
 			return err
@@ -143,13 +142,13 @@ func (ps *PgStorage) started() bool {
 	return ps.pool != nil
 }
 
-func (ps *PgStorage) GetNames(metricType string) ([]string, error) {
+func (ps *PgStorage) GetNames(ctx context.Context, metricType string) ([]string, error) {
 	if !ps.started() {
 		return nil, fmt.Errorf("Storage not started!")
 	}
 
 	var names []string
-	err := executeWithRetry(ps.ctx, ps.log, func() error {
+	err := executeWithRetry(ctx, ps.log, func() error {
 		var query string
 		switch metricType {
 		case model.Counter:
@@ -160,7 +159,7 @@ func (ps *PgStorage) GetNames(metricType string) ([]string, error) {
 			return fmt.Errorf("Unknown metricType %q", metricType)
 		}
 
-		rows, err := ps.pool.Query(ps.ctx, query)
+		rows, err := ps.pool.Query(ctx, query)
 		if err != nil {
 			return err
 		}
@@ -184,17 +183,17 @@ func (ps *PgStorage) GetNames(metricType string) ([]string, error) {
 	return names, nil
 }
 
-func (ps *PgStorage) GetCounter(name string) (*MetricData, error) {
+func (ps *PgStorage) GetCounter(ctx context.Context, name string) (*MetricData, error) {
 	if !ps.started() {
 		return nil, fmt.Errorf("Storage not started!")
 	}
 
 	var result *MetricData
-	err := executeWithRetry(ps.ctx, ps.log, func() error {
+	err := executeWithRetry(ctx, ps.log, func() error {
 		query := `SELECT delta FROM public.counters WHERE name = $1;`
 		var delta sql.NullInt64
 
-		err := ps.pool.QueryRow(ps.ctx, query, name).Scan(&delta)
+		err := ps.pool.QueryRow(ctx, query, name).Scan(&delta)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				result = nil
@@ -220,17 +219,17 @@ func (ps *PgStorage) GetCounter(name string) (*MetricData, error) {
 	return result, nil
 }
 
-func (ps *PgStorage) GetGauge(name string) (*MetricData, error) {
+func (ps *PgStorage) GetGauge(ctx context.Context, name string) (*MetricData, error) {
 	if !ps.started() {
 		return nil, fmt.Errorf("Storage not started!")
 	}
 
 	var result *MetricData
-	err := executeWithRetry(ps.ctx, ps.log, func() error {
+	err := executeWithRetry(ctx, ps.log, func() error {
 		query := `SELECT value FROM public.gauges WHERE name = $1;`
 		var value sql.NullFloat64
 
-		err := ps.pool.QueryRow(ps.ctx, query, name).Scan(&value)
+		err := ps.pool.QueryRow(ctx, query, name).Scan(&value)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				result = nil
@@ -256,18 +255,18 @@ func (ps *PgStorage) GetGauge(name string) (*MetricData, error) {
 	return result, nil
 }
 
-func (ps *PgStorage) SaveCounter(name string, value int64) error {
+func (ps *PgStorage) SaveCounter(ctx context.Context, name string, value int64) error {
 	if !ps.started() {
 		return fmt.Errorf("Storage not started!")
 	}
-	return executeWithRetry(ps.ctx, ps.log, func() error {
+	return executeWithRetry(ctx, ps.log, func() error {
 		query := `
 			INSERT INTO public.counters (name, delta) 
 			VALUES ($1, $2)
 			ON CONFLICT (name) 
 			DO UPDATE SET delta = counters.delta + EXCLUDED.delta;
 		`
-		_, err := ps.pool.Exec(ps.ctx, query, name, value)
+		_, err := ps.pool.Exec(ctx, query, name, value)
 		if err != nil {
 			return fmt.Errorf("Failed to save counter %q: %w", name, err)
 		}
@@ -275,18 +274,18 @@ func (ps *PgStorage) SaveCounter(name string, value int64) error {
 	})
 }
 
-func (ps *PgStorage) SaveGauge(name string, value float64) error {
+func (ps *PgStorage) SaveGauge(ctx context.Context, name string, value float64) error {
 	if !ps.started() {
 		return fmt.Errorf("Storage not started!")
 	}
-	return executeWithRetry(ps.ctx, ps.log, func() error {
+	return executeWithRetry(ctx, ps.log, func() error {
 		query := `
 			INSERT INTO public.gauges (name, value) 
 			VALUES ($1, $2)
 			ON CONFLICT (name) 
 			DO UPDATE SET value = EXCLUDED.value;
 		`
-		_, err := ps.pool.Exec(ps.ctx, query, name, value)
+		_, err := ps.pool.Exec(ctx, query, name, value)
 		if err != nil {
 			return fmt.Errorf("Failed to save gauge %q: %w", name, err)
 		}
@@ -294,67 +293,60 @@ func (ps *PgStorage) SaveGauge(name string, value float64) error {
 	})
 }
 
-func (ps *PgStorage) SaveCounters(counters []MetricData) error {
+func (ps *PgStorage) SaveMetrics(ctx context.Context, counters []MetricData, gauges []MetricData) error {
 	if !ps.started() {
 		return fmt.Errorf("Storage not started!")
 	}
-	if len(counters) == 0 {
-		return nil
-	}
 
-	return executeWithRetry(ps.ctx, ps.log, func() error {
-		query := `
-			INSERT INTO public.counters (name, delta) 
-			VALUES ($1, $2)
-			ON CONFLICT (name) 
-			DO UPDATE SET delta = counters.delta + EXCLUDED.delta;
-		`
-		batch := &pgx.Batch{}
-		for _, c := range counters {
-			batch.Queue(query, c.Name, c.Value)
+	return executeWithRetry(ctx, ps.log, func() error {
+		tx, err := ps.pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
-		br := ps.pool.SendBatch(ps.ctx, batch)
-		defer br.Close()
+		defer tx.Rollback(ctx)
 
-		for i := 0; i < len(counters); i++ {
-			_, err := br.Exec()
-			if err != nil {
-				return fmt.Errorf("Failed to execute batch counter item %d: %w", i, err)
+		if len(counters) > 0 {
+			counterQuery := `
+				INSERT INTO public.counters (name, delta) 
+				VALUES ($1, $2)
+				ON CONFLICT (name) 
+				DO UPDATE SET delta = counters.delta + EXCLUDED.delta;
+			`
+			for _, c := range counters {
+				val, ok := c.Value.(int64)
+				if !ok {
+					return fmt.Errorf("invalid counter value type for %s", c.Name)
+				}
+				_, err := tx.Exec(ctx, counterQuery, c.Name, val)
+				if err != nil {
+					return fmt.Errorf("failed to exec counter %s: %w", c.Name, err)
+				}
 			}
 		}
-		return nil
-	})
-}
 
-func (ps *PgStorage) SaveGauges(gauges []MetricData) error {
-	if !ps.started() {
-		return fmt.Errorf("Storage not started!")
-	}
-	if len(gauges) == 0 {
-		return nil
-	}
-
-	return executeWithRetry(ps.ctx, ps.log, func() error {
-		query := `
-			INSERT INTO public.gauges (name, value) 
-			VALUES ($1, $2)
-			ON CONFLICT (name) 
-			DO UPDATE SET value = EXCLUDED.value;
-		`
-		batch := &pgx.Batch{}
-		for _, g := range gauges {
-			batch.Queue(query, g.Name, g.Value)
-		}
-
-		br := ps.pool.SendBatch(ps.ctx, batch)
-		defer br.Close()
-
-		for i := 0; i < len(gauges); i++ {
-			_, err := br.Exec()
-			if err != nil {
-				return fmt.Errorf("Failed to execute batch item %d: %w", i, err)
+		if len(gauges) > 0 {
+			gaugeQuery := `
+				INSERT INTO public.gauges (name, value) 
+				VALUES ($1, $2)
+				ON CONFLICT (name) 
+				DO UPDATE SET value = EXCLUDED.value;
+			`
+			for _, g := range gauges {
+				val, ok := g.Value.(float64)
+				if !ok {
+					return fmt.Errorf("Invalid gauge value type for %s", g.Name)
+				}
+				_, err := tx.Exec(ctx, gaugeQuery, g.Name, val)
+				if err != nil {
+					return fmt.Errorf("failed to exec gauge %s: %w", g.Name, err)
+				}
 			}
 		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("Failed to commit transaction: %w", err)
+		}
+
 		return nil
 	})
 }

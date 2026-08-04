@@ -16,7 +16,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/labstack/gommon/log"
 	"go.uber.org/zap"
 )
 
@@ -73,7 +72,7 @@ func executeWithRetry(ctx context.Context, logger *zap.Logger, operation func() 
 
 func (ps *PgStorage) Start(ctx context.Context) error {
 	if ps.connString == "" {
-		log.Warn("Connection string is empty! Postgres Storage not started!")
+		ps.log.Warn("Connection string is empty! Postgres Storage not started!")
 	} else {
 		pool, err := pgxpool.New(ctx, ps.connString)
 		if err != nil {
@@ -130,10 +129,10 @@ func (ps *PgStorage) Ping(ctx context.Context) error {
 	return executeWithRetry(ctx, ps.log, func() error {
 		err := ps.pool.Ping(ctx)
 		if err != nil {
-			log.Error("Failed to ping db!", zap.Error(err))
+			ps.log.Error("Failed to ping db!", zap.Error(err))
 			return err
 		}
-		log.Info("Ping ok!")
+		ps.log.Info("Ping ok!")
 		return nil
 	})
 }

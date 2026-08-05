@@ -82,20 +82,19 @@ func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestMetricsExporter_Export(t *testing.T) {
+
 	zapLogger, _ := zap.NewDevelopment()
 	defer zapLogger.Sync()
 	callCounter := 0
 	storage := repository.NewMemStorage()
-	provider := service.DefaultProvider{
-		Repository: storage,
-	}
-	provider.SaveCounter("some-counter", 1)
-	provider.SaveGauge("some-gauge", 1)
+	provider := service.NewDefaultProvider(storage, zapLogger)
+	provider.SaveCounter(t.Context(), "some-counter", 1)
+	provider.SaveGauge(t.Context(), "some-gauge", 1)
 	header := http.Header{}
 	header.Add("Content-Type", "application/json")
 	exporter := NewMetricsExporter(
 		"",
-		&provider,
+		provider,
 		http.Client{
 			Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				callCounter++
@@ -109,5 +108,5 @@ func TestMetricsExporter_Export(t *testing.T) {
 		zapLogger,
 	)
 	exporter.Export(context.Background())
-	assert.Equal(t, 2, callCounter, "Export Method calling http.Client.Post must be 2 times - for gauge and for counter")
+	assert.Equal(t, 1, callCounter, "Export Method calling http.Client.Post 1 times - mow it is batch!")
 }

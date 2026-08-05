@@ -2,21 +2,23 @@ package main
 
 import (
 	"flag"
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"os"
 	"strconv"
-	"github.com/KonstantinPavlov/metric-service/internal/config"
 )
 
 var flagRunAddr string
 var flagStoreIntervalSeconds int
 var flagStorePath string
 var flagRestore bool
+var flagDbDSN string
 
 func parseFlags() error {
 	flag.StringVar(&flagRunAddr, "a", "localhost:8080", "address and port to run server")
 	flag.IntVar(&flagStoreIntervalSeconds, "i", 300, "store interval on disk - if 0 - sync store on disk")
 	flag.StringVar(&flagStorePath, "f", "./storage", "path to storage file")
 	flag.BoolVar(&flagRestore, "r", false, "restore data from storage on startup")
+	flag.StringVar(&flagDbDSN, "d", "", "DSN for PostgresSQL")
 	flag.Parse()
 
 	address := os.Getenv("ADDRESS")
@@ -45,6 +47,10 @@ func parseFlags() error {
 		flagRestore = restore
 	}
 
+	dsn := os.Getenv("DATABASE_DSN")
+	if dsn != "" {
+		flagDbDSN = dsn
+	}
+
 	return nil
 }
-

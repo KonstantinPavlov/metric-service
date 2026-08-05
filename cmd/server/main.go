@@ -35,25 +35,40 @@ func main() {
 	}
 }
 
+func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
+	if flagDbDSN != "" {
+		return repository.NewPgStorage(flagDbDSN, zapLogger)
+	}
+	memStorage := repository.NewMemStorage()
+	if flagStorePath != "" {
+		return repository.NewFileStorage(
+			flagStoreIntervalSeconds,
+			flagStorePath,
+			flagRestore,
+			memStorage,
+			zapLogger,
+		)
+	}
+	return memStorage
+}
+
 func run(zapLogger *zap.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	memStorage := repository.NewMemStorage()
-	repository := repository.NewFileStorage(
-		flagStoreIntervalSeconds,
-		flagStorePath,
-		flagRestore,
-		memStorage,
-		zapLogger,
-	)
-	// start file storage
-	repository.Start(ctx)
+	storage := defineStorage(zapLogger)
+	var storageErr error
+	go func() {
+		if err := storage.Start(ctx); err != nil {
+			zapLogger.Error("Storage failed to start", zap.Error(err))
+			storageErr = err
+			stop()
+		}
+	}()
 
-	// setup of echo web server
 	webHandler := handler.NewMetricHandler(
-		repository,
+		storage,
 		zapLogger,
 	)
 
@@ -66,6 +81,8 @@ func run(zapLogger *zap.Logger) error {
 		Template: tmpl,
 	}
 
+	storageHandler := handler.NewStorageHandler(storage, zapLogger)
+
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
 	httpServer.Use(echoMiddleware.Decompress())
@@ -73,25 +90,31 @@ func run(zapLogger *zap.Logger) error {
 	httpServer.Renderer = renderer
 	httpServer.POST("/update/:type/:name/:value", webHandler.HandleParamUpdate)
 	httpServer.POST("/update/", webHandler.HandleBodyUpdate)
+	httpServer.POST("/updates/", webHandler.HandleUpdates)
 	httpServer.GET("/value/:type/:name", webHandler.HandleGetValue)
 	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)
+	httpServer.GET("/ping", storageHandler.HandlePing)
 
 	go func() {
+		zapLogger.Info("Starting Web server...")
 		err := httpServer.Start(flagRunAddr)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))
+			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))			
 		}
 	}()
 
 	// gracefull shutdown
 	<-ctx.Done()
-	repository.Stop()
+	storage.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		zapLogger.Fatal("Gracefull shutdown failed", zap.Error(err))
 	}
 	zapLogger.Info("Web server stopped")
+	if storageErr != nil {
+		return storageErr
+	}
 	return nil
 }

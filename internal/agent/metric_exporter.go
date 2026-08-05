@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -56,27 +57,30 @@ func (me *MetricsExporter) Stop() {
 }
 
 func (me *MetricsExporter) Export(ctx context.Context) {
-	for key, value := range me.provider.GetCounters() {
-		req := model.Metrics{
+	requests := make([]model.Metrics, 0)
+	for key, value := range me.provider.GetCounters(ctx) {
+		requests = append(requests, model.Metrics{
 			ID:    key,
 			MType: model.Counter,
 			Delta: &value,
-		}
-		me.postMetric(ctx, req)
-
+		})
 	}
-	for key, value := range me.provider.GetGauges() {
-		req := model.Metrics{
+	for key, value := range me.provider.GetGauges(ctx) {
+		requests = append(requests, model.Metrics{
 			ID:    key,
 			MType: model.Gauge,
 			Value: &value,
-		}
-		me.postMetric(ctx, req)
+		})
 	}
+	if len(requests) == 0 {
+		me.log.Warn("Metrics are empty!")
+		return
+	}
+	me.postMetrics(ctx, requests)
 }
 
-func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
-	jsonBytes, err := json.Marshal(req)
+func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Metrics) {
+	jsonBytes, err := json.Marshal(requests)
 	if err != nil {
 		me.log.Error("Failed to marshall request!", zap.Error(err))
 		return
@@ -93,21 +97,56 @@ func (me *MetricsExporter) postMetric(ctx context.Context, req model.Metrics) {
 	}
 
 	me.log.Debug("Compressed data", zap.Int("before", len(jsonBytes)), zap.Int("after", compressed.Len()))
-	request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/update/", &compressed)
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Content-Encoding", "gzip")
-	if err != nil {
-		me.log.Error("Failed to create request!", zap.Error(err))
-		return
+	compressedBytes := compressed.Bytes()
+	maxAttemps := 4
+	retryDelay := 1 * time.Second
+
+	var resp *http.Response
+
+	for attempt := 1; attempt <= maxAttemps; attempt++ {
+		if err := ctx.Err(); err != nil {
+			me.log.Error("Context cancelled during HTTP retries", zap.Error(err))
+			return
+		}
+		bodyReader := bytes.NewReader(compressedBytes)
+		request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/updates/", bodyReader)
+		if err != nil {
+			me.log.Error("Failed to create request!", zap.Error(err))
+			return
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Content-Encoding", "gzip")
+		resp, err = me.client.Do(request)
+		if err == nil {
+			// all fine!
+			break
+		}
+		if attempt == maxAttemps {
+			me.log.Error("Error publishing metrics after all retries", zap.Int("size", len(requests)), zap.Error(err))
+			return
+		}
+
+		me.log.Warn("Network error occurred, retrying...", zap.Int("attempt", attempt), zap.Error(err))
+
+		select {
+		case <-time.After(retryDelay):
+			retryDelay += 2 * time.Second
+		case <-ctx.Done():
+			me.log.Error("Context cancelled while waiting for next retry", zap.Error(ctx.Err()))
+			return
+		}
 	}
-
-	resp, err := me.client.Do(request)
-
-	if err != nil {
-		me.log.Error("Error publishing metric", zap.String("name", req.ID), zap.String("metric_type", req.MType), zap.Error(err))
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
 	}
 
 	if resp != nil && resp.Header.Get("Content-Type") != "application/json" {
 		me.log.Error("Server response content-type is not valid!")
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			me.log.Error("Error reading response body", zap.Error(err))
+			return
+		}
+		me.log.Info("Server response body", zap.String("body", string(bodyBytes)))
 	}
 }

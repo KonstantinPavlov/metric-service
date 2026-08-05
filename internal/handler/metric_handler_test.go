@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -19,42 +20,62 @@ type MockMetricRepository struct {
 	SaveGaugeFunc   func(name string, value float64) error
 }
 
-func (m *MockMetricRepository) GetNames(metricTYpe string) []string {
-	return make([]string, 0)
+func (m *MockMetricRepository) Start(ctx context.Context) error {
+	return nil
 }
 
-func (m *MockMetricRepository) GetCounter(name string) *repository.MetricData {
+func (m *MockMetricRepository) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (m *MockMetricRepository) Stop() {
+
+}
+
+func (m *MockMetricRepository) GetNames(ctx context.Context, metricTYpe string) ([]string, error) {
+	return make([]string, 0), nil
+}
+
+func (m *MockMetricRepository) GetCounter(ctx context.Context, name string) (*repository.MetricData, error) {
 	if name == "special-counter" {
 		return &repository.MetricData{
 			Name:  "special-counter",
 			Value: *new(int64(42)),
-		}
+		}, nil
 	}
 
-	return nil
+	return nil, nil
 }
-func (m *MockMetricRepository) GetGauge(name string) *repository.MetricData {
+func (m *MockMetricRepository) GetGauge(ctx context.Context, name string) (*repository.MetricData, error) {
 	if name == "special-gauge" {
 		return &repository.MetricData{
 			Name:  "special-gauge",
 			Value: *new(float64(42.42)),
-		}
+		}, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (m *MockMetricRepository) SaveCounter(name string, value int64) error {
+func (m *MockMetricRepository) SaveCounter(ctx context.Context, name string, value int64) error {
 	if m.SaveCounterFunc != nil {
 		return m.SaveCounterFunc(name, value)
 	}
 	return nil
 }
 
-func (m *MockMetricRepository) SaveGauge(name string, value float64) error {
+func (m *MockMetricRepository) SaveGauge(ctx context.Context, name string, value float64) error {
 	if m.SaveGaugeFunc != nil {
 		return m.SaveGaugeFunc(name, value)
 	}
+	return nil
+}
+
+func (m *MockMetricRepository) SaveMetrics(
+	ctx context.Context,
+	counters []repository.MetricData,
+	gauges []repository.MetricData,
+) error {
 	return nil
 }
 
@@ -348,8 +369,8 @@ func TestMetricHandler_HandlePostValue(t *testing.T) {
 			method: http.MethodPost,
 			body: model.Metrics{
 				ID:    "testMetric",
-				MType: "unknown",			
-			},		
+				MType: "unknown",
+			},
 			expectedStatus: http.StatusBadRequest,
 		},
 	}
@@ -360,7 +381,7 @@ func TestMetricHandler_HandlePostValue(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			mockRepo := &MockMetricRepository{}			
+			mockRepo := &MockMetricRepository{}
 
 			handler := &MetricHandler{Repository: mockRepo, log: zapLogger}
 

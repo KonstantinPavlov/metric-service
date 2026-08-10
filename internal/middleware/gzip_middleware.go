@@ -9,19 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type bodyBufferedResponseWriter struct {
-	http.ResponseWriter
-	body       *bytes.Buffer
-	statusCode int
-}
-
-func (w *bodyBufferedResponseWriter) WriteHeader(statusCode int) {
-	w.statusCode = statusCode
-}
-
-func (w *bodyBufferedResponseWriter) Write(b []byte) (int, error) {
-	return w.body.Write(b)
-}
 
 func GzipMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {

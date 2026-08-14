@@ -4,10 +4,13 @@ import (
 	"context"
 	"math/rand/v2"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/KonstantinPavlov/metric-service/internal/service"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 	"go.uber.org/zap"
 )
 
@@ -26,7 +29,6 @@ func NewMetricCollector(provider service.MetricsProvider, log *zap.Logger) Metri
 
 func (mc *MetricsCollector) Start(ctx context.Context, interval time.Duration) {
 	mc.wg.Add(1)
-
 	go func() {
 		defer mc.wg.Done()
 
@@ -44,6 +46,25 @@ func (mc *MetricsCollector) Start(ctx context.Context, interval time.Duration) {
 			}
 		}
 	}()
+	mc.wg.Add(1)
+	go func() {
+		defer mc.wg.Done()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				mc.log.Info("Start collecting gopsutil metrics...")
+				mc.CollectPsUtil(ctx)
+				mc.log.Info("End collecting gopsutil metrics...")
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 }
 
 func (mc *MetricsCollector) Stop() {
@@ -82,4 +103,19 @@ func (mc *MetricsCollector) Collect(ctx context.Context) {
 	mc.Provider.SaveGauge(ctx, "TotalAlloc", float64(ms.TotalAlloc))
 	mc.Provider.SaveGauge(ctx, "RandomValue", rand.Float64())
 	mc.Provider.SaveCounter(ctx, "PollCount", 1)
+}
+
+func (mc *MetricsCollector) CollectPsUtil(ctx context.Context) {
+	vMemory, err := mem.VirtualMemoryWithContext(ctx)
+	if err == nil {
+		mc.Provider.SaveGauge(ctx, "TotalMemory", float64(vMemory.Total))
+		mc.Provider.SaveGauge(ctx, "FreeMemory", float64(vMemory.Free))
+	}
+	cpuPercents, err := cpu.PercentWithContext(ctx, 100*time.Millisecond, true)
+	if err == nil {
+		for i, percent := range cpuPercents {
+			metricName := "CPUutilization" + strconv.Itoa(i+1)
+			mc.Provider.SaveGauge(ctx, metricName, float64(percent))
+		}
+	}
 }

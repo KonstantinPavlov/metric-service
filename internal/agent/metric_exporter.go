@@ -24,9 +24,11 @@ type MetricsExporter struct {
 	cryptoKeyString string
 	cryptoKey       []byte
 	wg              sync.WaitGroup
+	rateLimit       int
+	jobsChannel     chan []model.Metrics
 }
 
-func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string) MetricsExporter {
+func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, rateLimit int) MetricsExporter {
 	return MetricsExporter{
 		serverUrl:       serverUrl,
 		provider:        provider,
@@ -34,6 +36,8 @@ func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, clie
 		log:             log,
 		cryptoKeyString: cryptoKey,
 		cryptoKey:       make([]byte, 0),
+		rateLimit:       rateLimit,
+		jobsChannel:     make(chan []model.Metrics, rateLimit*2),
 	}
 }
 
@@ -48,6 +52,12 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) er
 		me.cryptoKey = keyBytes
 	}
 
+	// запускаем воркеров
+	for i := 0; i < me.rateLimit; i++ {
+		me.wg.Add(1)
+		go me.worker(ctx)
+	}
+
 	go func() {
 		defer me.wg.Done()
 		ticker := time.NewTicker(interval)
@@ -60,6 +70,10 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) er
 				me.Export(ctx)
 				me.log.Info("End exporting metrics...")
 			case <-ctx.Done():
+				// closing channel!
+				if me.jobsChannel != nil {
+					close(me.jobsChannel)
+				}
 				return
 			}
 		}
@@ -91,7 +105,27 @@ func (me *MetricsExporter) Export(ctx context.Context) {
 		me.log.Warn("Metrics are empty!")
 		return
 	}
-	me.postMetrics(ctx, requests)
+
+	select {
+	case me.jobsChannel <- requests:
+	case <-ctx.Done():
+		return
+	}
+}
+
+func (me *MetricsExporter) worker(ctx context.Context) {
+	defer me.wg.Done()
+	for {
+		select {
+		case metrics, ok := <-me.jobsChannel:
+			if !ok {
+				return
+			}
+			me.postMetrics(ctx, metrics)
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Metrics) {

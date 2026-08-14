@@ -107,7 +107,15 @@ func TestMetricsExporter_Export(t *testing.T) {
 		},
 		zapLogger,
 		"",
+		1,
 	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := exporter.Start(ctx, 10*time.Hour)
+	assert.NoError(t, err)
 	exporter.Export(context.Background())
-	assert.Equal(t, 1, callCounter, "Export Method calling http.Client.Post 1 times - mow it is batch!")
+	// Ждем, пока воркер асинхронно вычитает задачу из канала и сделает HTTP-запрос
+	assert.Eventually(t, func() bool {
+		return callCounter == 1
+	}, 500*time.Millisecond, 10*time.Millisecond, "Export Method calling http.Client.Post 1 times")
 }

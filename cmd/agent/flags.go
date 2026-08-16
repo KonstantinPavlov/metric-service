@@ -48,7 +48,7 @@ func parseFlags() error {
 	if err != nil {
 		return err
 	}
-	if pollInterval != nil {
+	if rateLimit != nil {
 		flagRateLimit = *rateLimit
 	}
 

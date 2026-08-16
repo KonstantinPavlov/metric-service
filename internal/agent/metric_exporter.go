@@ -10,30 +10,54 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
 	"go.uber.org/zap"
 )
 
 type MetricsExporter struct {
-	serverUrl string
-	provider  service.MetricsProvider
-	client    http.Client
-	log       *zap.Logger
-	wg        sync.WaitGroup
+	serverUrl       string
+	provider        service.MetricsProvider
+	client          http.Client
+	log             *zap.Logger
+	cryptoKeyString string
+	cryptoKey       []byte
+	wg              sync.WaitGroup
+	rateLimit       int
+	jobsChannel     chan []model.Metrics
 }
 
-func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger) MetricsExporter {
+func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, rateLimit int) MetricsExporter {
 	return MetricsExporter{
-		serverUrl: serverUrl,
-		provider:  provider,
-		client:    client,
-		log:       log,
+		serverUrl:       serverUrl,
+		provider:        provider,
+		client:          client,
+		log:             log,
+		cryptoKeyString: cryptoKey,
+		cryptoKey:       make([]byte, 0),
+		rateLimit:       rateLimit,
+		jobsChannel:     make(chan []model.Metrics, rateLimit*2),
 	}
 }
 
-func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
+func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) error {
 	me.wg.Add(1)
+	if me.cryptoKeyString != "" {
+		keyBytes, err := crypto.DecodeKeyString(me.cryptoKeyString)
+		if err != nil {
+			return err
+		}
+		me.log.Info("Success load key!")
+		me.cryptoKey = keyBytes
+	}
+
+	// запускаем воркеров
+	for i := 0; i < me.rateLimit; i++ {
+		me.wg.Add(1)
+		go me.worker(ctx)
+	}
+
 	go func() {
 		defer me.wg.Done()
 		ticker := time.NewTicker(interval)
@@ -46,10 +70,15 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) {
 				me.Export(ctx)
 				me.log.Info("End exporting metrics...")
 			case <-ctx.Done():
+				// closing channel!
+				if me.jobsChannel != nil {
+					close(me.jobsChannel)
+				}
 				return
 			}
 		}
 	}()
+	return nil
 }
 
 func (me *MetricsExporter) Stop() {
@@ -76,7 +105,27 @@ func (me *MetricsExporter) Export(ctx context.Context) {
 		me.log.Warn("Metrics are empty!")
 		return
 	}
-	me.postMetrics(ctx, requests)
+
+	select {
+	case me.jobsChannel <- requests:
+	case <-ctx.Done():
+		return
+	}
+}
+
+func (me *MetricsExporter) worker(ctx context.Context) {
+	defer me.wg.Done()
+	for {
+		select {
+		case metrics, ok := <-me.jobsChannel:
+			if !ok {
+				return
+			}
+			me.postMetrics(ctx, metrics)
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Metrics) {
@@ -103,6 +152,11 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 
 	var resp *http.Response
 
+	var sha256HeaderValue = ""
+	if len(me.cryptoKey) != 0 {
+		sha256HeaderValue = crypto.CalculateSha256(me.cryptoKey, compressedBytes)
+	}
+
 	for attempt := 1; attempt <= maxAttemps; attempt++ {
 		if err := ctx.Err(); err != nil {
 			me.log.Error("Context cancelled during HTTP retries", zap.Error(err))
@@ -116,6 +170,9 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 		}
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Content-Encoding", "gzip")
+		if sha256HeaderValue != "" {
+			request.Header.Set("HashSHA256", sha256HeaderValue)
+		}
 		resp, err = me.client.Do(request)
 		if err == nil {
 			// all fine!

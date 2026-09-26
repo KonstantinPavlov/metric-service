@@ -160,7 +160,7 @@ func (fs *FileStorage) storeMetrics(ctx context.Context) {
 func (fs *FileStorage) store(data any) error {
 	file, err := os.Create(fs.cfg.storagePath)
 	if err != nil {
-		return fmt.Errorf("Failed to create/open file: %w", err)
+		return fmt.Errorf("failed to create/open file: %w", err)
 	}
 	defer file.Close()
 
@@ -168,7 +168,7 @@ func (fs *FileStorage) store(data any) error {
 	encoder.SetIndent("", "    ")
 
 	if err := encoder.Encode(data); err != nil {
-		return fmt.Errorf("Failed to encode to json: %w", err)
+		return fmt.Errorf("failed to encode to json: %w", err)
 	}
 	return nil
 }
@@ -177,12 +177,12 @@ func (fs *FileStorage) restore() ([]model.Metrics, error) {
 	var data []model.Metrics
 	file, err := os.Open(fs.cfg.storagePath)
 	if err != nil {
-		return data, fmt.Errorf("Failed to open file: %w", err)
+		return data, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&data); err != nil {
-		return data, fmt.Errorf("Error decode data: %w", err)
+		return data, fmt.Errorf("error decode data: %w", err)
 	}
 	return data, nil
 }
@@ -236,14 +236,14 @@ func (fs *FileStorage) SaveMetrics(
 		if metricValue, ok := counter.Value.(int64); ok {
 			fs.SaveCounter(ctx, counter.Name, metricValue)
 		} else {
-			return fmt.Errorf("Value is not a int64!")
+			return fmt.Errorf("value is not a int64")
 		}
 	}
 	for _, counter := range gauges {
 		if metricValue, ok := counter.Value.(float64); ok {
 			fs.SaveGauge(ctx, counter.Name, metricValue)
 		} else {
-			return fmt.Errorf("Value is not a float64!")
+			return fmt.Errorf("value is not a float64")
 		}
 	}
 	return nil

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/KonstantinPavlov/metric-service/internal/audit"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
@@ -37,8 +38,8 @@ func main() {
 }
 
 func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
-	if flagDbDSN != "" {
-		return repository.NewPgStorage(flagDbDSN, zapLogger)
+	if flagDBDSN != "" {
+		return repository.NewPgStorage(flagDBDSN, zapLogger)
 	}
 	memStorage := repository.NewMemStorage()
 	if flagStorePath != "" {
@@ -95,6 +96,17 @@ func run(zapLogger *zap.Logger) error {
 		zapLogger.Info("Adding crypto middlewares...")
 		httpServer.Use(middleware.Sha256RequestMiddleware(keyBytes))
 		httpServer.Use(middleware.Sha256ResponseMiddleware(keyBytes))
+	}
+
+	// observers
+	if flagAuditFile != "" {
+		o := audit.NewAuditFileObserver(zapLogger, flagAuditFile)
+		webHandler.Regsiter(o)
+	}
+
+	if flagAuditURL != "" {
+		o := audit.NewRemoteAuditObserver(zapLogger, flagAuditURL)
+		webHandler.Regsiter(o)
 	}
 
 	httpServer.Use(echoMiddleware.Decompress())

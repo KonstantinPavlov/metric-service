@@ -94,14 +94,14 @@ func (ms *MemStorage) SaveMetrics(
 		if metricValue, ok := counter.Value.(int64); ok {
 			ms.SaveCounter(ctx, counter.Name, metricValue)
 		} else {
-			return fmt.Errorf("Value is not a int64!")
+			return fmt.Errorf("value is not a int64")
 		}
 	}
 	for _, counter := range gauges {
 		if metricValue, ok := counter.Value.(float64); ok {
 			ms.SaveGauge(ctx, counter.Name, metricValue)
 		} else {
-			return fmt.Errorf("Value is not a float64!")
+			return fmt.Errorf("value is not a float64")
 		}
 	}
 	return nil

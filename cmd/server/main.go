@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
 	"github.com/KonstantinPavlov/metric-service/internal/middleware"
@@ -85,6 +86,17 @@ func run(zapLogger *zap.Logger) error {
 
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
+
+	if flagCryptoKey != "" {
+		keyBytes, err := crypto.DecodeKeyString(flagCryptoKey)
+		if err != nil {
+			return err
+		}
+		zapLogger.Info("Adding crypto middlewares...")
+		httpServer.Use(middleware.Sha256RequestMiddleware(keyBytes))
+		httpServer.Use(middleware.Sha256ResponseMiddleware(keyBytes))
+	}
+
 	httpServer.Use(echoMiddleware.Decompress())
 	httpServer.Use(middleware.GzipMiddleware())
 	httpServer.Renderer = renderer
@@ -100,7 +112,7 @@ func run(zapLogger *zap.Logger) error {
 		zapLogger.Info("Starting Web server...")
 		err := httpServer.Start(flagRunAddr)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))			
+			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))
 		}
 	}()
 

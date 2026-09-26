@@ -30,8 +30,11 @@ func main() {
 	collector := agent.NewMetricCollector(provider, zapLogger)
 
 	collector.Start(ctx, time.Duration(flagPollInterval)*time.Second)
-	exporter := agent.NewMetricsExporter(flagServerAddr, provider, http.Client{}, zapLogger)
-	exporter.Start(ctx, time.Duration(flagReportInterval)*time.Second)
+	exporter := agent.NewMetricsExporter(flagServerAddr, provider, http.Client{}, zapLogger, flagCryptoKey, flagRateLimit)
+	err = exporter.Start(ctx, time.Duration(flagReportInterval)*time.Second)
+	if err != nil {
+		zapLogger.Fatal("failde to start exporter!", zap.Error(err))
+	}
 	<-ctx.Done()
 	exporter.Stop()
 	collector.Stop()

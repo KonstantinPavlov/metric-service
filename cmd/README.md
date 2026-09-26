@@ -25,3 +25,12 @@ go run . -d postgres://admin:admin123@host.docker.internal:5432/metrics?sslmode=
 ``` bash 
 migrate -database "postgres://admin:admin123@host.docker.internal:5432/metrics?sslmode=disable" -path ./migrations up
 ```
+
+
+test keys 
+``` bash 
+a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0
+
+9876543210987654321098765432109876543210987654321098765432101234
+
+```

@@ -15,7 +15,7 @@ type MetricRepository interface {
 	) error
 	Ping(ctx context.Context) error
 	Start(ctx context.Context) error
-	Stop()	
+	Stop()
 }
 
 type MetricData struct {

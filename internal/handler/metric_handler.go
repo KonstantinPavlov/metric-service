@@ -172,7 +172,7 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 		val, ok := metric.Value.(float64)
 		if !ok {
 			return c.String(http.StatusInternalServerError, "invalid gauge type")
-		}		
+		}
 		return c.String(http.StatusOK, strconv.FormatFloat(val, 'f', -1, 64))
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")

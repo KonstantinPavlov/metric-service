@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-		_ "net/http/pprof"
+	_ "net/http/pprof"
 
 	"github.com/KonstantinPavlov/metric-service/internal/audit"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
@@ -19,9 +19,9 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
 	"github.com/KonstantinPavlov/metric-service/internal/middleware"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
+	"github.com/labstack/echo-contrib/pprof"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
-	"github.com/labstack/echo-contrib/pprof"
 	"go.uber.org/zap"
 )
 

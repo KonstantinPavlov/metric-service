@@ -7,8 +7,8 @@ import (
 )
 
 func DecodeKeyString(cryptoKeyString string) ([]byte, error) {
-	keyBytes := make([]byte,0)
-	key := sha256.Sum256([]byte(cryptoKeyString))	
+	keyBytes := make([]byte, 0)
+	key := sha256.Sum256([]byte(cryptoKeyString))
 	keyBytes = append(keyBytes, key[:]...)
 	if len(keyBytes) != 32 {
 		return nil, fmt.Errorf("invalid key length: got %d bytes, want 32 bytes", len(keyBytes))

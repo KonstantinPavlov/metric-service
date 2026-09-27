@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+		_ "net/http/pprof"
+
 	"github.com/KonstantinPavlov/metric-service/internal/audit"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
@@ -19,6 +21,7 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo-contrib/pprof"
 	"go.uber.org/zap"
 )
 
@@ -119,6 +122,9 @@ func run(zapLogger *zap.Logger) error {
 	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)
 	httpServer.GET("/ping", storageHandler.HandlePing)
+
+	// pprof middleware
+	pprof.Register(httpServer)
 
 	go func() {
 		zapLogger.Info("Starting Web server...")

@@ -155,7 +155,12 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
-		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
+		val, ok := metric.Value.(int64)
+		if !ok {
+			return c.String(http.StatusInternalServerError, "invalid counter type")
+		}
+		return c.String(http.StatusOK, strconv.FormatInt(val, 10))
+
 	case model.Gauge:
 		metric, err := mh.Repository.GetGauge(c.Request().Context(), metricName)
 		if err != nil {
@@ -164,7 +169,11 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
-		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
+		val, ok := metric.Value.(float64)
+		if !ok {
+			return c.String(http.StatusInternalServerError, "invalid gauge type")
+		}		
+		return c.String(http.StatusOK, strconv.FormatFloat(val, 'f', -1, 64))
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")
 	}

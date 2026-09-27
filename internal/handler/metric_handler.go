@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 
+	"github.com/KonstantinPavlov/metric-service/internal/audit"
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo/v4"
@@ -12,12 +15,15 @@ import (
 )
 
 type MetricHandler struct {
+	mu         sync.Mutex
+	observers  []audit.AuditObserver
 	Repository repository.MetricRepository
 	log        *zap.Logger
 }
 
 func NewMetricHandler(repository repository.MetricRepository, log *zap.Logger) MetricHandler {
 	return MetricHandler{
+		observers:  make([]audit.AuditObserver, 0),
 		Repository: repository,
 		log:        log,
 	}
@@ -35,6 +41,12 @@ func appenListView(views []ListView, metricType string, metric repository.Metric
 		Type:  metricType,
 		Value: metric.Value},
 	)
+}
+
+func (mh *MetricHandler) Regsiter(o audit.AuditObserver) {
+	mh.mu.Lock()
+	defer mh.mu.Unlock()
+	mh.observers = append(mh.observers, o)
 }
 
 func (mh *MetricHandler) HandleList(c echo.Context) error {
@@ -143,7 +155,12 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
-		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
+		val, ok := metric.Value.(int64)
+		if !ok {
+			return c.String(http.StatusInternalServerError, "invalid counter type")
+		}
+		return c.String(http.StatusOK, strconv.FormatInt(val, 10))
+
 	case model.Gauge:
 		metric, err := mh.Repository.GetGauge(c.Request().Context(), metricName)
 		if err != nil {
@@ -152,7 +169,11 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 		if metric == nil {
 			return c.String(http.StatusNotFound, "metric not found!")
 		}
-		return c.String(http.StatusOK, fmt.Sprintf("%v", metric.Value))
+		val, ok := metric.Value.(float64)
+		if !ok {
+			return c.String(http.StatusInternalServerError, "invalid gauge type")
+		}		
+		return c.String(http.StatusOK, strconv.FormatFloat(val, 'f', -1, 64))
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")
 	}
@@ -191,6 +212,10 @@ func (mh *MetricHandler) HandleBodyUpdate(c echo.Context) error {
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")
 	}
+	mh.notify(
+		c.Request().Context(),
+		audit.NewServerEvent([]string{req.ID}, c.Request().Host),
+	)
 	return c.JSON(http.StatusOK, req)
 }
 
@@ -227,6 +252,10 @@ func (mh *MetricHandler) HandleParamUpdate(c echo.Context) error {
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")
 	}
+	mh.notify(
+		c.Request().Context(),
+		audit.NewServerEvent([]string{metricName}, c.Request().Host),
+	)
 	return c.String(http.StatusOK, "metric saved")
 }
 
@@ -243,7 +272,7 @@ func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 
 	var countersData []repository.MetricData
 	var gaugesData []repository.MetricData
-
+	var metricNames []string
 	// Валидируем и распределяем метрики по типам
 	for _, metric := range requests {
 		switch metric.MType {
@@ -251,6 +280,7 @@ func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 			if metric.Delta == nil {
 				return c.String(http.StatusBadRequest, fmt.Sprintf("Delta not specified for counter: %s", metric.ID))
 			}
+			metricNames = append(metricNames, metric.ID)
 			countersData = append(countersData, repository.MetricData{
 				Name:  metric.ID,
 				Value: *metric.Delta,
@@ -259,6 +289,7 @@ func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 			if metric.Value == nil {
 				return c.String(http.StatusBadRequest, fmt.Sprintf("Value not specified for gauge: %s", metric.ID))
 			}
+			metricNames = append(metricNames, metric.ID)
 			gaugesData = append(gaugesData, repository.MetricData{
 				Name:  metric.ID,
 				Value: *metric.Value,
@@ -277,6 +308,15 @@ func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save metrics: %v", err))
 	}
-
+	mh.notify(
+		c.Request().Context(),
+		audit.NewServerEvent(metricNames, c.Request().Host),
+	)
 	return c.JSON(http.StatusOK, requests)
+}
+
+func (mh *MetricHandler) notify(ctx context.Context, e audit.AuditEvent) {
+	for _, o := range mh.observers {
+		o.Notify(ctx, e)
+	}
 }

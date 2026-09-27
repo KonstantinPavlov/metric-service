@@ -17,7 +17,7 @@ import (
 )
 
 type MetricsExporter struct {
-	serverUrl       string
+	serverURL       string
 	provider        service.MetricsProvider
 	client          http.Client
 	log             *zap.Logger
@@ -28,9 +28,9 @@ type MetricsExporter struct {
 	jobsChannel     chan []model.Metrics
 }
 
-func NewMetricsExporter(serverUrl string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, rateLimit int) MetricsExporter {
+func NewMetricsExporter(serverURL string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, rateLimit int) MetricsExporter {
 	return MetricsExporter{
-		serverUrl:       serverUrl,
+		serverURL:       serverURL,
 		provider:        provider,
 		client:          client,
 		log:             log,
@@ -163,7 +163,7 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 			return
 		}
 		bodyReader := bytes.NewReader(compressedBytes)
-		request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverUrl+"/updates/", bodyReader)
+		request, err := http.NewRequestWithContext(ctx, "POST", "http://"+me.serverURL+"/updates/", bodyReader)
 		if err != nil {
 			me.log.Error("Failed to create request!", zap.Error(err))
 			return

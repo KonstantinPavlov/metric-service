@@ -9,10 +9,14 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-
 func GzipMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+
+			if strings.HasPrefix(c.Path(), "/debug/pprof") {
+				return next(c)
+			}
+
 			if !strings.Contains(c.Request().Header.Get("Accept-Encoding"), "gzip") {
 				return next(c)
 			}
@@ -28,7 +32,7 @@ func GzipMiddleware() echo.MiddlewareFunc {
 			c.Response().Writer = originalWriter
 			if err != nil {
 				return err
-			}			
+			}
 			contentType := c.Response().Header().Get("Content-Type")
 
 			if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {

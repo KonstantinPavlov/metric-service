@@ -11,11 +11,15 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
+	"github.com/KonstantinPavlov/metric-service/internal/audit"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
 	"github.com/KonstantinPavlov/metric-service/internal/middleware"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
+	"github.com/labstack/echo-contrib/pprof"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -37,8 +41,8 @@ func main() {
 }
 
 func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
-	if flagDbDSN != "" {
-		return repository.NewPgStorage(flagDbDSN, zapLogger)
+	if flagDBDSN != "" {
+		return repository.NewPgStorage(flagDBDSN, zapLogger)
 	}
 	memStorage := repository.NewMemStorage()
 	if flagStorePath != "" {
@@ -97,6 +101,17 @@ func run(zapLogger *zap.Logger) error {
 		httpServer.Use(middleware.Sha256ResponseMiddleware(keyBytes))
 	}
 
+	// observers
+	if flagAuditFile != "" {
+		o := audit.NewAuditFileObserver(zapLogger, flagAuditFile)
+		webHandler.Regsiter(o)
+	}
+
+	if flagAuditURL != "" {
+		o := audit.NewRemoteAuditObserver(zapLogger, flagAuditURL)
+		webHandler.Regsiter(o)
+	}
+
 	httpServer.Use(echoMiddleware.Decompress())
 	httpServer.Use(middleware.GzipMiddleware())
 	httpServer.Renderer = renderer
@@ -107,6 +122,9 @@ func run(zapLogger *zap.Logger) error {
 	httpServer.POST("/value/", webHandler.HandlePostValue)
 	httpServer.GET("/", webHandler.HandleList)
 	httpServer.GET("/ping", storageHandler.HandlePing)
+
+	// pprof middleware
+	pprof.Register(httpServer)
 
 	go func() {
 		zapLogger.Info("Starting Web server...")

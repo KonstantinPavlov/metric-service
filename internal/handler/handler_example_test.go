@@ -133,7 +133,7 @@ func ExampleMetricHandler_HandleUpdates() {
 	e := echo.New()
 	
 	var delta int64 = 1
-	var value float64 = 42.15
+	var value = 42.15
 	
 	metricsBatch := []model.Metrics{
 		{ID: "PollCount", MType: model.Counter, Delta: &delta},

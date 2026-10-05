@@ -1,3 +1,6 @@
+// Package handler реализует HTTP-обработчики для работы с метриками.
+// Пакет поддерживает сбор, регистрацию наблюдателей для аудита и отображение
+// накопленных метрик (типов counter и gauge) через HTML-шаблоны.
 package handler
 
 import (
@@ -14,6 +17,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// MetricHandler представляет собой структуру для обработки HTTP-запросов,
+// связанных с метриками. Она управляет подписчиками (наблюдателями аудита)
+// и взаимодействует с хранилищем метрик.
+//
+// Все методы структуры безопасны для конкурентного использования.
 type MetricHandler struct {
 	mu         sync.Mutex
 	observers  []audit.AuditObserver
@@ -21,6 +29,8 @@ type MetricHandler struct {
 	log        *zap.Logger
 }
 
+// NewMetricHandler создает и инициализирует новый экземпляр MetricHandler
+// на основе предоставленного репозитория и логгера.
 func NewMetricHandler(repository repository.MetricRepository, log *zap.Logger) MetricHandler {
 	return MetricHandler{
 		observers:  make([]audit.AuditObserver, 0),
@@ -29,12 +39,15 @@ func NewMetricHandler(repository repository.MetricRepository, log *zap.Logger) M
 	}
 }
 
+// ListView представляет структуру данных метрики, подготовленную
+// для вывода на веб-интерфейс или рендеринга в HTML-шаблонах.
 type ListView struct {
 	Name  string
 	Type  string
 	Value interface{}
 }
 
+// appenListView вспомогательная внутренняя функция для добавления метрики в срез отображения.
 func appenListView(views []ListView, metricType string, metric repository.MetricData) []ListView {
 	return append(views, ListView{
 		Name:  metric.Name,
@@ -43,12 +56,21 @@ func appenListView(views []ListView, metricType string, metric repository.Metric
 	)
 }
 
+// Regsiter регистрирует нового наблюдателя (AuditObserver) в обработчике.
+// Наблюдатели используются для логирования действий или аудита изменений метрик.
 func (mh *MetricHandler) Regsiter(o audit.AuditObserver) {
 	mh.mu.Lock()
 	defer mh.mu.Unlock()
 	mh.observers = append(mh.observers, o)
 }
 
+// HandleList обрабатывает HTTP-запрос на получение полного списка метрик.
+// Метод запрашивает все имена и значения метрик типа Counter и Gauge из репозитория,
+// формирует срез структур ListView и передает его для рендеринга страницы "list-view.html".
+//
+// Возвращает ошибку, если репозиторию не удалось получить доступ к именам метрик,
+// либо если произошел сбой при отрисовке HTML-шаблона. Ошибки чтения конкретных
+// метрик пропускаются и пишутся в лог со статусом Error.
 func (mh *MetricHandler) HandleList(c echo.Context) error {
 	counterNames, err := mh.Repository.GetNames(c.Request().Context(), model.Counter)
 	if err != nil {
@@ -99,6 +121,16 @@ func (mh *MetricHandler) HandleList(c echo.Context) error {
 	return c.Render(http.StatusOK, "list-view.html", data)
 }
 
+// HandlePostValue обрабатывает HTTP-запрос POST для получения значения конкретной метрики.
+// Метод принимает JSON-тело запроса, содержащее ID и тип метрики, извлекает её текущее 
+// значение из репозитория, подставляет значение в структуру ответа (Delta для counter, Value для gauge)
+// и возвращает обновленный JSON-объект.
+//
+// Возвращаемые HTTP-статусы:
+//   - 200 OK: Метрика успешно найдена и возвращена в формате JSON.
+//   - 400 Bad Request: Некорректный формат JSON или передан неизвестный тип метрики.
+//   - 404 Not Found: Не указано имя метрики или метрика с таким ID отсутствует в репозитории.
+//   - 500 Internal Server Error: Произошла внутренняя ошибка репозитория при извлечении данных.
 func (mh *MetricHandler) HandlePostValue(c echo.Context) error {
 	req := &model.Metrics{}
 	err := c.Bind(req)
@@ -138,6 +170,15 @@ func (mh *MetricHandler) HandlePostValue(c echo.Context) error {
 	}
 }
 
+// HandleGetValue обрабатывает HTTP-запрос GET для получения значения метрики через URL-параметры.
+// Тип метрики и её имя считываются из параметров пути "type" и "name". Значение возвращается 
+// в виде простой строки (plain text).
+//
+// Возвращаемые HTTP-статусы:
+//   - 200 OK: Значение метрики успешно возвращено в текстовом виде.
+//   - 400 Bad Request: Передан неизвестный тип метрики.
+//   - 404 Not Found: Не указано имя метрики или метрика отсутствует в репозитории.
+//   - 500 Internal Server Error: Ошибка репозитория или несоответствие типов данных при приведении.
 func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 	metricType := c.Param("type")
 	metricName := c.Param("name")
@@ -179,6 +220,16 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 	}
 }
 
+// HandleBodyUpdate обрабатывает HTTP-запрос POST для обновления или создания метрики.
+// Данные считываются из JSON-тела запроса. После успешного сохранения метрики в хранилище, 
+// метод уведомляет всех зарегистрированных наблюдателей (observers) о событии обновления.
+//
+// Возвращаемые HTTP-статусы:
+//   - 200 OK: Метрика успешно обновлена, тело запроса возвращено обратно в формате JSON.
+//   - 400 Bad Request: Некорректный JSON, отсутствует обязательное поле (Delta или Value) 
+//     или передан неизвестный тип метрики.
+//   - 404 Not Found: Не указан ID метрики.
+//   - 500 Internal Server Error: Ошибка репозитория при попытке сохранить данные.
 func (mh *MetricHandler) HandleBodyUpdate(c echo.Context) error {
 	req := &model.Metrics{}
 	err := c.Bind(req)
@@ -219,6 +270,16 @@ func (mh *MetricHandler) HandleBodyUpdate(c echo.Context) error {
 	return c.JSON(http.StatusOK, req)
 }
 
+// HandleParamUpdate обрабатывает HTTP-запрос POST для обновления метрики через URL-параметры пути.
+// Параметры "type", "name" и "value" считываются непосредственно из URL. Метод производит 
+// валидацию и парсинг строкового значения в числовой тип данных, сохраняет метрику 
+// и оповещает зарегистрированных наблюдателей.
+//
+// Возвращаемые HTTP-статусы:
+//   - 200 OK: Метрика успешно сохранена, возвращается текстовое сообщение "metric saved".
+//   - 400 Bad Request: Не удалось распарсить числовое значение или указан неизвестный тип метрики.
+//   - 404 Not Found: Не указано имя метрики.
+//   - 500 Internal Server Error: Ошибка репозитория при сохранении.
 func (mh *MetricHandler) HandleParamUpdate(c echo.Context) error {
 	metricType := c.Param("type")
 	metricName := c.Param("name")
@@ -259,6 +320,16 @@ func (mh *MetricHandler) HandleParamUpdate(c echo.Context) error {
 	return c.String(http.StatusOK, "metric saved")
 }
 
+// HandleUpdates обрабатывает HTTP-запрос POST для пакетного (batch) обновления метрик.
+// Метод принимает JSON-массив структур model.Metrics, валидирует переданные элементы,
+// группирует их по типам и отправляет в репозиторий для атомарного сохранения в рамках транзакции.
+// После успешного сохранения пакета метод отправляет одно общее уведомление для всех измененных метрик.
+//
+// Возвращаемые HTTP-статусы:
+//   - 200 OK: Пакет метрик успешно сохранен, массив возвращается в формате JSON.
+//   - 400 Bad Request: Пустой массив данных, ошибка десериализации JSON, 
+//     отсутствие дельты/значения у метрики или неизвестный тип метрики в пакете.
+//   - 500 Internal Server Error: Сбой транзакции или пакетного сохранения в репозитории.
 func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 	var requests []model.Metrics
 	err := c.Bind(&requests)
@@ -315,6 +386,7 @@ func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 	return c.JSON(http.StatusOK, requests)
 }
 
+// notify обходит список зарегистрированных наблюдателей и отправляет им событие аудита.
 func (mh *MetricHandler) notify(ctx context.Context, e audit.AuditEvent) {
 	for _, o := range mh.observers {
 		o.Notify(ctx, e)

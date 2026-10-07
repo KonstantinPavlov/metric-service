@@ -10,39 +10,42 @@ import (
 )
 
 type FileAuditObserver struct {
-	mu       sync.Mutex
-	log      *zap.Logger
-	filePath string
+	mu   sync.Mutex
+	log  *zap.Logger
+	file *os.File
 }
 
-func NewAuditFileObserver(log *zap.Logger, filePath string) *FileAuditObserver {
-	return &FileAuditObserver{
-		log:      log,
-		filePath: filePath,
+func NewAuditFileObserver(log *zap.Logger, filePath string) (*FileAuditObserver, error) {
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error("Failed to open file", zap.Error(err))
+		return nil, err
 	}
+	return &FileAuditObserver{
+		log:  log,
+		file: file,
+	}, nil
 }
 
-func (a *FileAuditObserver) Notify(
+func (f *FileAuditObserver) Notify(
 	ctx context.Context,
 	event AuditEvent,
 ) {
 	if err := ctx.Err(); err != nil {
-		a.log.Warn("Skipping audit log: context already done", zap.Error(err))
+		f.log.Warn("Skipping audit log: context already done", zap.Error(err))
 		return
 	}
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-	file, err := os.OpenFile(a.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		a.log.Error("Failed to open file", zap.Error(err))
+	f.log.Info("Saving audit event to file ", zap.Any("event", event))
+	if err := json.NewEncoder(f.file).Encode(event); err != nil {
+		f.log.Error("Failed to encode to json", zap.Error(err))
 		return
 	}
-	defer file.Close()
-	a.log.Info("Saving audit event to file ", zap.Any("event", event))
-	if err := json.NewEncoder(file).Encode(event); err != nil {
-		a.log.Error("Failed to encode to json", zap.Error(err))
-		return
-	}
+}
+
+func (f *FileAuditObserver) Stop() {
+	f.file.Close()
 }

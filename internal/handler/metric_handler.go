@@ -23,19 +23,24 @@ import (
 //
 // Все методы структуры безопасны для конкурентного использования.
 type MetricHandler struct {
-	mu         sync.Mutex
-	observers  []audit.AuditObserver
-	Repository repository.MetricRepository
-	log        *zap.Logger
+	mu            sync.Mutex
+	observers     []audit.AuditObserver
+	Repository    repository.MetricRepository
+	log           *zap.Logger
+	wg            sync.WaitGroup
+	eventsWorkers int
+	eventsChannel chan audit.AuditEvent
 }
 
 // NewMetricHandler создает и инициализирует новый экземпляр MetricHandler
 // на основе предоставленного репозитория и логгера.
-func NewMetricHandler(repository repository.MetricRepository, log *zap.Logger) MetricHandler {
+func NewMetricHandler(repository repository.MetricRepository, log *zap.Logger, workers int) MetricHandler {
 	return MetricHandler{
-		observers:  make([]audit.AuditObserver, 0),
-		Repository: repository,
-		log:        log,
+		observers:     make([]audit.AuditObserver, 0),
+		Repository:    repository,
+		log:           log,
+		eventsWorkers: workers,
+		eventsChannel: make(chan audit.AuditEvent, workers*2),
 	}
 }
 
@@ -56,12 +61,43 @@ func appenListView(views []ListView, metricType string, metric repository.Metric
 	)
 }
 
-// Regsiter регистрирует нового наблюдателя (AuditObserver) в обработчике.
+// Register регистрирует нового наблюдателя (AuditObserver) в обработчике.
 // Наблюдатели используются для логирования действий или аудита изменений метрик.
-func (mh *MetricHandler) Regsiter(o audit.AuditObserver) {
+func (mh *MetricHandler) Register(o audit.AuditObserver) {
 	mh.mu.Lock()
 	defer mh.mu.Unlock()
 	mh.observers = append(mh.observers, o)
+}
+
+func (mh *MetricHandler) Start(ctx context.Context) {
+	for i := 0; i < mh.eventsWorkers; i++ {
+		mh.wg.Add(1)
+		go mh.worker(ctx)
+	}
+}
+
+func (mh *MetricHandler) worker(ctx context.Context) {
+	defer mh.wg.Done()
+	for {
+		select {
+		case event, ok := <-mh.eventsChannel:
+			if !ok {
+				return
+			}
+			for _, o := range mh.observers {
+				o.Notify(ctx, event)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (mh *MetricHandler) Stop() {
+	mh.wg.Wait()
+	for _, o := range mh.observers {
+		o.Stop()
+	}
 }
 
 // HandleList обрабатывает HTTP-запрос на получение полного списка метрик.
@@ -122,7 +158,7 @@ func (mh *MetricHandler) HandleList(c echo.Context) error {
 }
 
 // HandlePostValue обрабатывает HTTP-запрос POST для получения значения конкретной метрики.
-// Метод принимает JSON-тело запроса, содержащее ID и тип метрики, извлекает её текущее 
+// Метод принимает JSON-тело запроса, содержащее ID и тип метрики, извлекает её текущее
 // значение из репозитория, подставляет значение в структуру ответа (Delta для counter, Value для gauge)
 // и возвращает обновленный JSON-объект.
 //
@@ -171,7 +207,7 @@ func (mh *MetricHandler) HandlePostValue(c echo.Context) error {
 }
 
 // HandleGetValue обрабатывает HTTP-запрос GET для получения значения метрики через URL-параметры.
-// Тип метрики и её имя считываются из параметров пути "type" и "name". Значение возвращается 
+// Тип метрики и её имя считываются из параметров пути "type" и "name". Значение возвращается
 // в виде простой строки (plain text).
 //
 // Возвращаемые HTTP-статусы:
@@ -221,12 +257,12 @@ func (mh *MetricHandler) HandleGetValue(c echo.Context) error {
 }
 
 // HandleBodyUpdate обрабатывает HTTP-запрос POST для обновления или создания метрики.
-// Данные считываются из JSON-тела запроса. После успешного сохранения метрики в хранилище, 
+// Данные считываются из JSON-тела запроса. После успешного сохранения метрики в хранилище,
 // метод уведомляет всех зарегистрированных наблюдателей (observers) о событии обновления.
 //
 // Возвращаемые HTTP-статусы:
 //   - 200 OK: Метрика успешно обновлена, тело запроса возвращено обратно в формате JSON.
-//   - 400 Bad Request: Некорректный JSON, отсутствует обязательное поле (Delta или Value) 
+//   - 400 Bad Request: Некорректный JSON, отсутствует обязательное поле (Delta или Value)
 //     или передан неизвестный тип метрики.
 //   - 404 Not Found: Не указан ID метрики.
 //   - 500 Internal Server Error: Ошибка репозитория при попытке сохранить данные.
@@ -263,16 +299,17 @@ func (mh *MetricHandler) HandleBodyUpdate(c echo.Context) error {
 	default:
 		return c.String(http.StatusBadRequest, "unkwnown metric type!")
 	}
+
 	mh.notify(
 		c.Request().Context(),
-		audit.NewServerEvent([]string{req.ID}, c.Request().Host),
+		audit.NewServerEvent([]string{req.ID}, c.RealIP()),
 	)
 	return c.JSON(http.StatusOK, req)
 }
 
 // HandleParamUpdate обрабатывает HTTP-запрос POST для обновления метрики через URL-параметры пути.
-// Параметры "type", "name" и "value" считываются непосредственно из URL. Метод производит 
-// валидацию и парсинг строкового значения в числовой тип данных, сохраняет метрику 
+// Параметры "type", "name" и "value" считываются непосредственно из URL. Метод производит
+// валидацию и парсинг строкового значения в числовой тип данных, сохраняет метрику
 // и оповещает зарегистрированных наблюдателей.
 //
 // Возвращаемые HTTP-статусы:
@@ -327,7 +364,7 @@ func (mh *MetricHandler) HandleParamUpdate(c echo.Context) error {
 //
 // Возвращаемые HTTP-статусы:
 //   - 200 OK: Пакет метрик успешно сохранен, массив возвращается в формате JSON.
-//   - 400 Bad Request: Пустой массив данных, ошибка десериализации JSON, 
+//   - 400 Bad Request: Пустой массив данных, ошибка десериализации JSON,
 //     отсутствие дельты/значения у метрики или неизвестный тип метрики в пакете.
 //   - 500 Internal Server Error: Сбой транзакции или пакетного сохранения в репозитории.
 func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
@@ -386,9 +423,11 @@ func (mh *MetricHandler) HandleUpdates(c echo.Context) error {
 	return c.JSON(http.StatusOK, requests)
 }
 
-// notify обходит список зарегистрированных наблюдателей и отправляет им событие аудита.
+// notify добавляет в канал событие аудита
 func (mh *MetricHandler) notify(ctx context.Context, e audit.AuditEvent) {
-	for _, o := range mh.observers {
-		o.Notify(ctx, e)
+	select {
+	case mh.eventsChannel <- e:
+	case <-ctx.Done():
+		return
 	}
 }

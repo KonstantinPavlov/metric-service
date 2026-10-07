@@ -6,14 +6,14 @@ import (
 )
 
 type AuditEvent struct {
-	Time    time.Time `json:"ts"`
-	Metrics []string  `json:"metrics"`
-	Address string    `json:"ip_address"`
+	Time    int64    `json:"ts"`
+	Metrics []string `json:"metrics"`
+	Address string   `json:"ip_address"`
 }
 
 func NewServerEvent(metrics []string, address string) AuditEvent {
 	return AuditEvent{
-		Time:    time.Now(),
+		Time:    time.Now().Unix(),
 		Metrics: metrics,
 		Address: address,
 	}
@@ -24,4 +24,5 @@ type AuditObserver interface {
 		ctx context.Context,
 		event AuditEvent,
 	)
+	Stop()
 }

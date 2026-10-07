@@ -75,8 +75,9 @@ func run(zapLogger *zap.Logger) error {
 	webHandler := handler.NewMetricHandler(
 		storage,
 		zapLogger,
+		1,
 	)
-
+	webHandler.Start(ctx)
 	tmpl, err := template.ParseFS(viewsFS, "views/*.html")
 	if err != nil {
 		return err
@@ -103,13 +104,16 @@ func run(zapLogger *zap.Logger) error {
 
 	// observers
 	if flagAuditFile != "" {
-		o := audit.NewAuditFileObserver(zapLogger, flagAuditFile)
-		webHandler.Regsiter(o)
+		o, err := audit.NewAuditFileObserver(zapLogger, flagAuditFile)
+		if err != nil {
+			return err
+		}
+		webHandler.Register(o)
 	}
 
 	if flagAuditURL != "" {
 		o := audit.NewRemoteAuditObserver(zapLogger, flagAuditURL)
-		webHandler.Regsiter(o)
+		webHandler.Register(o)
 	}
 
 	httpServer.Use(echoMiddleware.Decompress())
@@ -137,6 +141,7 @@ func run(zapLogger *zap.Logger) error {
 	// gracefull shutdown
 	<-ctx.Done()
 	storage.Stop()
+	webHandler.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {

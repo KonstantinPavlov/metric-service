@@ -28,7 +28,7 @@ func TestRemoteAuditObserver_Notify_Success(t *testing.T) {
 			t.Fatalf("failed to decode request body: %v", err)
 		}
 
-		if !received.Time.Equal(event.Time) {
+		if received.Time != event.Time {
 			t.Errorf("expected time %v, got %v", event.Time, received.Time)
 		}
 		if received.Address != event.Address {

@@ -23,35 +23,39 @@ func NewRemoteAuditObserver(log *zap.Logger, url string) *RemoteAuditObserver {
 	}
 }
 
-func (a *RemoteAuditObserver) Notify(
+func (r *RemoteAuditObserver) Notify(
 	ctx context.Context,
 	event AuditEvent,
 ) {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(event); err != nil {
-		a.log.Error("Failed to encode audit event to JSON", zap.Error(err))
+		r.log.Error("Failed to encode audit event to JSON", zap.Error(err))
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.serverURL, &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.serverURL, &buf)
 	if err != nil {
-		a.log.Error("Failed to create HTTP request", zap.Error(err))
+		r.log.Error("Failed to create HTTP request", zap.Error(err))
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.client.Do(req)
+	resp, err := r.client.Do(req)
 	if err != nil {
-		a.log.Error("Failed to send audit event via HTTP", zap.Error(err))
+		r.log.Error("Failed to send audit event via HTTP", zap.Error(err))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		a.log.Error("Remote audit server returned non-2xx status",
+		r.log.Error("Remote audit server returned non-2xx status",
 			zap.Int("status_code", resp.StatusCode),
 		)
 		return
 	}
-	a.log.Info("Audit data successfully sent to remote server")
+	r.log.Info("Audit data successfully sent to remote server")
+}
+
+func (r *RemoteAuditObserver) Stop() {
+	//do nothing
 }

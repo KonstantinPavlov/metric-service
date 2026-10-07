@@ -46,6 +46,141 @@ git fetch template && git checkout template/v2 .github
 
 ## Исправления черезе pprof 
 
+### HEAP 
+
+vscode ➜ /workspaces/metric-service (iter19) $ go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof 
+File: server
+Build ID: 13bd3e5dac9acddc7bb914c05a5eacc34522c369
+Type: inuse_space
+Time: 2026-10-07 16:15:59 UTC
+Duration: 60s, Total samples = 1414.82kB 
+Showing nodes accounting for -122.77kB, 8.68% of 1414.82kB total
+      flat  flat%   sum%        cum   cum%
+  902.59kB 63.80% 63.80%   902.59kB 63.80%  compress/flate.NewWriter (inline)
+ -513.12kB 36.27% 27.53%  -513.12kB 36.27%  sync.(*Pool).pinSlow
+ -512.23kB 36.20%  8.68%  -512.23kB 36.20%  runtime.mallocgc
+         0     0%  8.68%   902.59kB 63.80%  compress/gzip.(*Writer).Write
+         0     0%  8.68%   902.59kB 63.80%  github.com/labstack/echo/v4.(*Echo).ServeHTTP
+         0     0%  8.68%   902.59kB 63.80%  main.run.Decompress.DecompressWithConfig.func7.1
+         0     0%  8.68%   902.59kB 63.80%  main.run.GzipMiddleware.func6.1
+         0     0%  8.68%   902.59kB 63.80%  main.run.ZapMiddleware.func3.1
+         0     0%  8.68%   389.46kB 27.53%  net/http.(*conn).serve
+         0     0%  8.68%  -513.12kB 36.27%  net/http.newBufioWriterSize
+         0     0%  8.68%   902.59kB 63.80%  net/http.serverHandler.ServeHTTP
+         0     0%  8.68%  -512.23kB 36.20%  runtime.malg
+         0     0%  8.68%  -512.23kB 36.20%  runtime.newobject
+         0     0%  8.68%  -512.23kB 36.20%  runtime.newproc.func1
+         0     0%  8.68%  -512.23kB 36.20%  runtime.newproc1
+         0     0%  8.68%  -512.23kB 36.20%  runtime.systemstack
+         0     0%  8.68%  -513.12kB 36.27%  sync.(*Pool).Get
+         0     0%  8.68%  -513.12kB 36.27%  sync.(*Pool).pin
+
+
+vscode ➜ /workspaces/metric-service (iter19) $ go tool pprof -top -alloc_space -diff_base=profiles/base.pprof profiles/result.pprof
+File: server
+Build ID: 13bd3e5dac9acddc7bb914c05a5eacc34522c369
+Type: alloc_space
+Time: 2026-10-07 16:15:59 UTC
+Duration: 60s, Total samples = 5686.14kB 
+Showing nodes accounting for 33590.73kB, 590.75% of 5686.14kB total
+Dropped 2 nodes (cum <= 28.43kB)
+      flat  flat%   sum%        cum   cum%
+ 3585.75kB 63.06% 63.06%  3585.75kB 63.06%  encoding/json.(*Decoder).refill
+ 3584.74kB 63.04% 126.10%  3584.74kB 63.04%  net/textproto.readMIMEHeader
+ 3072.87kB 54.04% 180.15%  3072.87kB 54.04%  net/textproto.MIMEHeader.Set (inline)
+ 2560.20kB 45.03% 225.17%  5632.66kB 99.06%  context.withCancel (inline)
+ 1805.17kB 31.75% 256.92%  1703.39kB 29.96%  compress/flate.NewWriter (inline)
+ 1536.52kB 27.02% 283.94%  1536.52kB 27.02%  net/http.Header.Clone (inline)
+ 1536.47kB 27.02% 310.96% 15021.83kB 264.18%  main.run.ZapMiddleware.func3.1
+ 1536.47kB 27.02% 337.98%  5633.24kB 99.07%  net/http.readRequest
+ 1536.35kB 27.02% 365.00% 10754.10kB 189.13%  net/http.(*conn).readRequest
+ 1536.30kB 27.02% 392.02%  3072.47kB 54.03%  context.(*cancelCtx).propagateCancel
+ 1536.19kB 27.02% 419.04%  1536.19kB 27.02%  net.newFD (inline)
+ 1536.16kB 27.02% 446.05%  1536.16kB 27.02%  context.(*cancelCtx).Done
+ 1024.31kB 18.01% 464.07%  1024.31kB 18.01%  encoding/json.NewDecoder (inline)
+ 1024.23kB 18.01% 482.08%  1024.23kB 18.01%  go.uber.org/zap/internal/stacktrace.Capture
+ 1024.14kB 18.01% 500.09%  1024.14kB 18.01%  net/http.(*Server).newConn (inline)
+ 1024.05kB 18.01% 518.10%  1024.05kB 18.01%  main.run.Decompress.DecompressWithConfig.func7
+ 1024.02kB 18.01% 536.11%  1024.02kB 18.01%  go.uber.org/zap/buffer.(*Buffer).String (inline)
+ 1024.02kB 18.01% 554.12%  1024.02kB 18.01%  main.run.GzipMiddleware.func6
+  544.67kB  9.58% 563.70%   544.67kB  9.58%  compress/flate.newDeflateFast (inline)
+  515.38kB  9.06% 572.76%   515.38kB  9.06%  runtime/pprof.(*protobuf).string (inline)
+  514.38kB  9.05% 581.81%   514.38kB  9.05%  compress/flate.NewReader
+ -514.38kB  9.05% 572.76%   282.25kB  4.96%  runtime/pprof.(*profileBuilder).emitLocation
+ -513.12kB  9.02% 563.74%  -513.12kB  9.02%  sync.(*Pool).pinSlow
+ -512.23kB  9.01% 554.73%  -512.23kB  9.01%  runtime.mallocgc
+  512.03kB  9.00% 563.73%   512.03kB  9.00%  net/http.readTransfer
+  512.02kB  9.00% 572.74%   512.02kB  9.00%  context.WithValue
+  512.02kB  9.00% 581.74%  3072.34kB 54.03%  net/http.(*Server).Serve
+  512.01kB  9.00% 590.75% 10243.57kB 180.15%  github.com/KonstantinPavlov/metric-service/internal/handler.(*MetricHandler).HandleBodyUpdate
+         0     0% 590.75%   514.38kB  9.05%  compress/gzip.(*Reader).Reset
+         0     0% 590.75%   514.38kB  9.05%  compress/gzip.(*Reader).readHeader
+         0     0% 590.75%  1703.39kB 29.96%  compress/gzip.(*Writer).Write
+         0     0% 590.75%  5632.66kB 99.06%  context.WithCancel
+         0     0% 590.75%  3585.75kB 63.06%  encoding/json.(*Decoder).Decode
+         0     0% 590.75%  3585.75kB 63.06%  encoding/json.(*Decoder).readValue
+         0     0% 590.75%  1536.52kB 27.02%  encoding/json.(*Encoder).Encode
+         0     0% 590.75%   797.63kB 14.03%  github.com/labstack/echo-contrib/pprof.Register.handler.func6
+         0     0% 590.75%  4610.06kB 81.08%  github.com/labstack/echo/v4.(*DefaultBinder).Bind
+         0     0% 590.75%  4610.06kB 81.08%  github.com/labstack/echo/v4.(*DefaultBinder).BindBody
+         0     0% 590.75% 17069.89kB 300.20%  github.com/labstack/echo/v4.(*Echo).ServeHTTP
+         0     0% 590.75%  3072.34kB 54.03%  github.com/labstack/echo/v4.(*Echo).Start
+         0     0% 590.75% 11041.20kB 194.18%  github.com/labstack/echo/v4.(*Echo).add.func1
+         0     0% 590.75%  1536.52kB 27.02%  github.com/labstack/echo/v4.(*Response).Write
+         0     0% 590.75%  1536.52kB 27.02%  github.com/labstack/echo/v4.(*Response).WriteHeader
+         0     0% 590.75%  4610.06kB 81.08%  github.com/labstack/echo/v4.(*context).Bind
+         0     0% 590.75%  4609.38kB 81.06%  github.com/labstack/echo/v4.(*context).JSON
+         0     0% 590.75%  4609.38kB 81.06%  github.com/labstack/echo/v4.(*context).json
+         0     0% 590.75%  3072.87kB 54.04%  github.com/labstack/echo/v4.(*context).writeContentType
+         0     0% 590.75%  4610.06kB 81.08%  github.com/labstack/echo/v4.DefaultJSONSerializer.Deserialize
+         0     0% 590.75%  1536.52kB 27.02%  github.com/labstack/echo/v4.DefaultJSONSerializer.Serialize
+         0     0% 590.75%  2048.06kB 36.02%  github.com/labstack/echo/v4.applyMiddleware
+         0     0% 590.75%  1536.19kB 27.02%  github.com/labstack/echo/v4.tcpKeepAliveListener.Accept
+         0     0% 590.75%  1535.13kB 27.00%  go.uber.org/zap.(*Logger).Info
+         0     0% 590.75%   511.11kB  8.99%  go.uber.org/zap.(*Logger).check
+         0     0% 590.75%  -513.12kB  9.02%  go.uber.org/zap/internal/pool.(*Pool[go.shape.*uint8]).Get (inline)
+         0     0% 590.75%  -513.12kB  9.02%  go.uber.org/zap/zapcore.(*CheckedEntry).AddCore (inline)
+         0     0% 590.75%  1024.02kB 18.01%  go.uber.org/zap/zapcore.(*CheckedEntry).Write
+         0     0% 590.75%  -513.12kB  9.02%  go.uber.org/zap/zapcore.(*ioCore).Check
+         0     0% 590.75%  1024.02kB 18.01%  go.uber.org/zap/zapcore.(*ioCore).Write
+         0     0% 590.75%  1024.02kB 18.01%  go.uber.org/zap/zapcore.(*jsonEncoder).EncodeEntry
+         0     0% 590.75%  -513.12kB  9.02%  go.uber.org/zap/zapcore.(*sampler).Check
+         0     0% 590.75%  1024.02kB 18.01%  go.uber.org/zap/zapcore.EntryCaller.TrimmedPath
+         0     0% 590.75%  1024.02kB 18.01%  go.uber.org/zap/zapcore.ShortCallerEncoder
+         0     0% 590.75%  -513.12kB  9.02%  go.uber.org/zap/zapcore.getCheckedEntry
+         0     0% 590.75% 12462.34kB 219.17%  main.run.Decompress.DecompressWithConfig.func7.1
+         0     0% 590.75% 11947.97kB 210.12%  main.run.GzipMiddleware.func6.1
+         0     0% 590.75%  3072.34kB 54.03%  main.run.func2
+         0     0% 590.75%  1536.19kB 27.02%  net.(*TCPListener).AcceptTCP
+         0     0% 590.75%  1536.19kB 27.02%  net.(*TCPListener).accept
+         0     0% 590.75%  1536.19kB 27.02%  net.(*netFD).accept
+         0     0% 590.75% 30384.17kB 534.36%  net/http.(*conn).serve
+         0     0% 590.75%  1536.52kB 27.02%  net/http.(*response).WriteHeader
+         0     0% 590.75%   797.63kB 14.03%  net/http.HandlerFunc.ServeHTTP
+         0     0% 590.75%  3072.87kB 54.04%  net/http.Header.Set (inline)
+         0     0% 590.75% 17069.89kB 300.20%  net/http.serverHandler.ServeHTTP
+         0     0% 590.75%   797.63kB 14.03%  net/http/pprof.collectProfile
+         0     0% 590.75%   797.63kB 14.03%  net/http/pprof.handler.ServeHTTP
+         0     0% 590.75%   797.63kB 14.03%  net/http/pprof.handler.serveDeltaProfile
+         0     0% 590.75%  3584.74kB 63.04%  net/textproto.(*Reader).ReadMIMEHeader (inline)
+         0     0% 590.75%  -512.23kB  9.01%  runtime.malg
+         0     0% 590.75%  -512.23kB  9.01%  runtime.newobject
+         0     0% 590.75%  -512.23kB  9.01%  runtime.newproc.func1
+         0     0% 590.75%  -512.23kB  9.01%  runtime.newproc1
+         0     0% 590.75%  -512.23kB  9.01%  runtime.systemstack
+         0     0% 590.75%   797.63kB 14.03%  runtime/pprof.(*Profile).WriteTo
+         0     0% 590.75%   282.25kB  4.96%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 590.75%   515.38kB  9.06%  runtime/pprof.(*profileBuilder).build
+         0     0% 590.75%   796.63kB 14.01%  runtime/pprof.(*profileBuilder).flush
+         0     0% 590.75%   515.38kB  9.06%  runtime/pprof.(*protobuf).strings
+         0     0% 590.75%   797.63kB 14.03%  runtime/pprof.writeHeap
+         0     0% 590.75%   797.63kB 14.03%  runtime/pprof.writeHeapInternal
+         0     0% 590.75%   797.63kB 14.03%  runtime/pprof.writeHeapProto
+         0     0% 590.75%  -513.12kB  9.02%  sync.(*Pool).Get
+         0     0% 590.75%  -513.12kB  9.02%  sync.(*Pool).pin
+
+### CPU 
+
 vscode ➜ /workspaces/metric-service (iter17) $ go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof 
 File: server
 Build ID: 70d1b344716fe8abb9a45606f464d49e7ef3f8f9

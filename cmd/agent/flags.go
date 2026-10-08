@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
-	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"os"
+
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 )
 
 var flagServerAddr string

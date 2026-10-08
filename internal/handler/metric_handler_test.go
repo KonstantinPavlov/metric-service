@@ -161,7 +161,7 @@ func TestMetricHandler_HandleParamUpdate(t *testing.T) {
 			mockRepo := &MockMetricRepository{}
 			tt.setupMock(mockRepo)
 
-			handler := &MetricHandler{Repository: mockRepo, log: zapLogger}
+			handler := NewMetricHandler(mockRepo, zapLogger, 1)
 
 			httpServer := echo.New()
 			httpServer.POST("/update/:type/:name/:value", handler.HandleParamUpdate)
@@ -282,7 +282,7 @@ func TestMetricHandler_HandleBodyUpdate(t *testing.T) {
 			mockRepo := &MockMetricRepository{}
 			tt.setupMock(mockRepo)
 
-			handler := &MetricHandler{Repository: mockRepo, log: zapLogger}
+			handler := NewMetricHandler(mockRepo, zapLogger, 1)
 
 			httpServer := echo.New()
 			httpServer.POST("/update", handler.HandleBodyUpdate)
@@ -383,7 +383,7 @@ func TestMetricHandler_HandlePostValue(t *testing.T) {
 
 			mockRepo := &MockMetricRepository{}
 
-			handler := &MetricHandler{Repository: mockRepo, log: zapLogger}
+			handler := NewMetricHandler(mockRepo, zapLogger, 1)
 
 			httpServer := echo.New()
 			httpServer.POST("/value/", handler.HandlePostValue)

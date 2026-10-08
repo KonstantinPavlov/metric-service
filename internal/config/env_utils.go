@@ -5,7 +5,6 @@ import (
 	"strconv"
 )
 
-
 func ParseIntEnvVal(env string) (*int, error) {
 	valueStr := os.Getenv(env)
 	if valueStr != "" {

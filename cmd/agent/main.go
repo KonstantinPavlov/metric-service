@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,7 +15,27 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+func printBuildInfo() {
+	fmt.Printf("Build version: %s\n", getBuildValue(buildVersion))
+	fmt.Printf("Build date: %s\n", getBuildValue(buildDate))
+	fmt.Printf("Build commit: %s\n", getBuildValue(buildCommit))
+}
+
+func getBuildValue(val string) string {
+	if val == "" {
+		return "N/A"
+	}
+	return val
+}
+
 func main() {
+	printBuildInfo()
 	err := parseFlags()
 	if err != nil {
 		panic(err)
@@ -37,5 +58,5 @@ func main() {
 	}
 	<-ctx.Done()
 	exporter.Stop()
-	collector.Stop()	
+	collector.Stop()
 }

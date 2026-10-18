@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"os"
@@ -28,7 +29,27 @@ import (
 //go:embed views/*
 var viewsFS embed.FS
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+func printBuildInfo() {
+	fmt.Printf("Build version: %s\n", getBuildValue(buildVersion))
+	fmt.Printf("Build date: %s\n", getBuildValue(buildDate))
+	fmt.Printf("Build commit: %s\n", getBuildValue(buildCommit))
+}
+
+func getBuildValue(val string) string {
+	if val == "" {
+		return "N/A"
+	}
+	return val
+}
+
 func main() {
+	printBuildInfo()
 	zapLogger, _ := zap.NewProduction()
 	defer zapLogger.Sync()
 	err := parseFlags()

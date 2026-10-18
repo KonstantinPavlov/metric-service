@@ -37,5 +37,5 @@ func main() {
 	}
 	<-ctx.Done()
 	exporter.Stop()
-	collector.Stop()
+	collector.Stop()	
 }

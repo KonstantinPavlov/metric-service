@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
-	"go/parser"
 	"go/token"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/tools/go/packages"
 )
 
 type TargetStruct struct {
@@ -19,113 +20,101 @@ type TargetStruct struct {
 }
 
 func main() {
-	log.Println("=== Старт генератора Reset ===")
-	
-	// Находим абсолютный путь корня, чтобы go/parser не терял файлы
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("Не удалось получить рабочую директорию: %v", err)
+	log.Println("=== Старт генерации Reset (x/tools/go/packages) ===")
+
+	// Настраиваем конфигурацию для загрузки пакетов.
+	// Нам нужны имена файлов, синтаксические деревья (AST) и комментарии.
+	cfg := &packages.Config{
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax,
+		// Сканируем текущую директорию и все подпакеты рекурсивно через "./..."
+		Tests: false, 
 	}
 
-	err = filepath.Walk(wd, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			// Пропускаем служебные директории
-			if strings.HasPrefix(info.Name(), ".") || info.Name() == "vendor" {
-				return filepath.SkipDir
-			}
-			// Пропускаем саму папку генератора
-			if info.Name() == "reset" && strings.Contains(path, "cmd") {
-				return filepath.SkipDir
-			}
-			
-			// Обрабатываем конкретную директорию пакета
-			processPackage(path)
-		}
-		return nil
-	})
-
+	// Загружаем все пакеты проекта
+	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
-		log.Fatalf("Ошибка сканирования проекта: %v", err)
+		log.Fatalf("Не удалось загрузить пакеты проекта: %v", err)
 	}
-	log.Println("=== Сканирование завершено ===")
+
+	if packages.PrintErrors(pkgs) > 0 {
+		os.Exit(1)
+	}
+
+	// Обрабатываем каждый найденный пакет
+	for _, pkg := range pkgs {
+		// Пропускаем саму утилиту генерации
+		if pkg.Name == "main" && strings.Contains(pkg.PkgPath, "cmd/reset") {
+			continue
+		}
+
+		processPackage(pkg)
+	}
+
+	log.Println("=== Генерация успешно завершена ===")
 }
 
-func processPackage(dirPath string) {
-	fset := token.NewFileSet()
-	
-	// Парсим файлы по абсолютному пути
-	pkgs, err := parser.ParseDir(fset, dirPath, func(info os.FileInfo) bool {
-		return !strings.HasSuffix(info.Name(), "_test.go") && info.Name() != "reset.gen.go"
-	}, parser.ParseComments)
-	
-	if err != nil {
-		return
+func processPackage(pkg *packages.Package) {
+	var targets []TargetStruct
+	var dirPath string
+
+	// Обходим все файлы в пакете
+	for _, file := range pkg.Syntax {
+		// Ищем маркер "generate:reset" в комментариях файла
+		hasDirectiveInFile := false
+		for _, commentGroup := range file.Comments {
+			for _, comment := range commentGroup.List {
+				cleanText := strings.ReplaceAll(comment.Text, " ", "")
+				if strings.Contains(cleanText, "generate:reset") {
+					hasDirectiveInFile = true
+					break
+				}
+			}
+		}
+
+		if !hasDirectiveInFile {
+			continue
+		}
+
+		// Вычисляем директорию пакета по пути к первому файлу с директивой
+		if dirPath == "" && len(pkg.GoFiles) > 0 {
+			dirPath = filepath.Dir(pkg.GoFiles[0])
+		}
+
+		// Ищем структуры в файле
+		ast.Inspect(file, func(n ast.Node) bool {
+			genDecl, ok := n.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.TYPE {
+				return true
+			}
+
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+
+				structType, ok := typeSpec.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+
+				targets = append(targets, TargetStruct{
+					Name:   typeSpec.Name.Name,
+					Struct: structType,
+				})
+			}
+			return true
+		})
 	}
 
-	for pkgName, pkg := range pkgs {
-		var targets []TargetStruct
-
-		for _, file := range pkg.Files {
-			// 1. Проверяем, содержит ли вообще этот файл маркер "generate:reset"
-			hasDirectiveInFile := false
-			for _, commentGroup := range file.Comments {
-				for _, comment := range commentGroup.List {
-					cleanText := strings.ReplaceAll(comment.Text, " ", "")
-					if strings.Contains(cleanText, "generate:reset") {
-						hasDirectiveInFile = true
-						break
-					}
-				}
-			}
-
-			// Если в файле нет маркера, этот файл вообще не разбираем
-			if !hasDirectiveInFile {
-				continue
-			}
-
-			// Выводим лог, что файл зацепил наше внимание
-			log.Printf("Найдена директива в файле: %s (пакет %s)", filepath.Base(fset.File(file.Pos()).Name()), pkgName)
-
-			// 2. Ищем саму структуру в файле
-			ast.Inspect(file, func(n ast.Node) bool {
-				genDecl, ok := n.(*ast.GenDecl)
-				if !ok || genDecl.Tok != token.TYPE {
-					return true
-				}
-
-				for _, spec := range genDecl.Specs {
-					typeSpec, ok := spec.(*ast.TypeSpec)
-					if !ok {
-						continue
-					}
-
-					structType, ok := typeSpec.Type.(*ast.StructType)
-					if !ok {
-						continue
-					}
-
-					// Железобетонная проверка: если маркер есть в файле, добавляем структуры из этого объявления
-					targets = append(targets, TargetStruct{
-						Name:   typeSpec.Name.Name,
-						Struct: structType,
-					})
-				}
-				return true
-			})
+	// Если нашли структуры, генерируем для них методы Reset
+	if len(targets) > 0 && dirPath != "" {
+		err := generateResetFile(dirPath, pkg.Name, targets)
+		if err != nil {
+			log.Printf("Ошибка генерации для пакета %s: %v", pkg.Name, err)
+			return
 		}
-
-		if len(targets) > 0 {
-			err := generateResetFile(dirPath, pkgName, targets)
-			if err != nil {
-				log.Printf("ОШИБКА генерации для пакета %s: %v", pkgName, err)
-				return
-			}
-			fmt.Printf(" [УСПЕХ] Сгенерирован reset.gen.go для пакета %s в %s\n", pkgName, dirPath)
-		}
+		fmt.Printf(" [УСПЕХ] Сгенерирован reset.gen.go для пакета %s в %s\n", pkg.Name, dirPath)
 	}
 }
 
@@ -160,7 +149,7 @@ func generateResetFile(dirPath, pkgName string, targets []TargetStruct) error {
 	formatted, err := format.Source(buf.Bytes())
 	if err != nil {
 		_ = os.WriteFile(filepath.Join(dirPath, "reset.gen.go"), buf.Bytes(), 0644)
-		return fmt.Errorf("ошибка форматирования: %w (сырой файл сохранен для анализа)", err)
+		return fmt.Errorf("ошибка форматирования: %w (сырой файл сохранен)", err)
 	}
 
 	return os.WriteFile(filepath.Join(dirPath, "reset.gen.go"), formatted, 0644)

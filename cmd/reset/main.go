@@ -25,19 +25,19 @@ func main() {
 	// Настраиваем конфигурацию для загрузки пакетов.
 	// Нам нужны имена файлов, синтаксические деревья (AST) и комментарии.
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax,
-		// Сканируем текущую директорию и все подпакеты рекурсивно через "./..."
-		Tests: false, 
+		// Важно: NeedSyntax подгружает комментарии непосредственно в узлы AST (в поле Doc)
+		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedSyntax,
+		Tests: false,
 	}
 
 	// Загружаем все пакеты проекта
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
-		log.Fatalf("Не удалось загрузить пакеты проекта: %v", err)
+		log.Fatalf("не удалось загрузить пакеты проекта: %v", err)
 	}
 
 	if packages.PrintErrors(pkgs) > 0 {
-		os.Exit(1)
+		log.Fatalf("обнаружены ошибки при загрузке пакетов")
 	}
 
 	// Обрабатываем каждый найденный пакет
@@ -59,33 +59,14 @@ func processPackage(pkg *packages.Package) {
 
 	// Обходим все файлы в пакете
 	for _, file := range pkg.Syntax {
-		// Ищем маркер "generate:reset" в комментариях файла
-		hasDirectiveInFile := false
-		for _, commentGroup := range file.Comments {
-			for _, comment := range commentGroup.List {
-				cleanText := strings.ReplaceAll(comment.Text, " ", "")
-				if strings.Contains(cleanText, "generate:reset") {
-					hasDirectiveInFile = true
-					break
-				}
-			}
-		}
-
-		if !hasDirectiveInFile {
-			continue
-		}
-
-		// Вычисляем директорию пакета по пути к первому файлу с директивой
-		if dirPath == "" && len(pkg.GoFiles) > 0 {
-			dirPath = filepath.Dir(pkg.GoFiles[0])
-		}
-
-		// Ищем структуры в файле
 		ast.Inspect(file, func(n ast.Node) bool {
 			genDecl, ok := n.(*ast.GenDecl)
 			if !ok || genDecl.Tok != token.TYPE {
 				return true
 			}
+
+			// Проверяем комментарий над одиночным type или над группой type (...)
+			hasGroupComment := containsResetDirective(genDecl.Doc)
 
 			for _, spec := range genDecl.Specs {
 				typeSpec, ok := spec.(*ast.TypeSpec)
@@ -98,16 +79,25 @@ func processPackage(pkg *packages.Package) {
 					continue
 				}
 
-				targets = append(targets, TargetStruct{
-					Name:   typeSpec.Name.Name,
-					Struct: structType,
-				})
+				// Проверяем комментарий над конкретной структурой внутри блока type (...)
+				hasSpecComment := containsResetDirective(typeSpec.Doc)
+
+				// Генерируем только если маркер стоит строго над этой структурой или над её группой
+				if hasGroupComment || hasSpecComment {
+					if dirPath == "" && len(pkg.GoFiles) > 0 {
+						dirPath = filepath.Dir(pkg.GoFiles[0])
+					}
+
+					targets = append(targets, TargetStruct{
+						Name:   typeSpec.Name.Name,
+						Struct: structType,
+					})
+				}
 			}
 			return true
 		})
 	}
 
-	// Если нашли структуры, генерируем для них методы Reset
 	if len(targets) > 0 && dirPath != "" {
 		err := generateResetFile(dirPath, pkg.Name, targets)
 		if err != nil {
@@ -116,6 +106,20 @@ func processPackage(pkg *packages.Package) {
 		}
 		fmt.Printf(" [УСПЕХ] Сгенерирован reset.gen.go для пакета %s в %s\n", pkg.Name, dirPath)
 	}
+}
+
+// Проверяет, есть ли директива в конкретном блоке документации узла
+func containsResetDirective(commentGroup *ast.CommentGroup) bool {
+	if commentGroup == nil {
+		return false
+	}
+	for _, comment := range commentGroup.List {
+		cleanText := strings.ReplaceAll(comment.Text, " ", "")
+		if strings.Contains(cleanText, "generate:reset") {
+			return true
+		}
+	}
+	return false
 }
 
 func generateResetFile(dirPath, pkgName string, targets []TargetStruct) error {
@@ -158,7 +162,11 @@ func generateResetFile(dirPath, pkgName string, targets []TargetStruct) error {
 func writeFieldReset(buf *bytes.Buffer, receiver, fieldName string, expr ast.Expr) {
 	switch t := expr.(type) {
 	case *ast.Ident:
-		buf.WriteString(fmt.Sprintf("\t%s.%s = %s\n", receiver, fieldName, getZeroValue(t.Name)))
+		if isPrimitive(t.Name) {
+			buf.WriteString(fmt.Sprintf("\t%s.%s = %s\n", receiver, fieldName, getZeroValue(t.Name)))
+			return
+		}
+		buf.WriteString(fmt.Sprintf("\t{\n\t\tvar zero %s\n\t\t%s.%s = zero\n\t}\n", t.Name, receiver, fieldName))
 
 	case *ast.ArrayType:
 		if t.Len == nil {
@@ -170,8 +178,12 @@ func writeFieldReset(buf *bytes.Buffer, receiver, fieldName string, expr ast.Exp
 			buf.WriteString("\t}\n")
 		}
 
-	case *ast.MapType:
-		buf.WriteString(fmt.Sprintf("\tclear(%s.%s)\n", receiver, fieldName))
+	case *ast.MapType, *ast.InterfaceType, *ast.ChanType, *ast.FuncType:
+		if _, ok := t.(*ast.MapType); ok {
+			buf.WriteString(fmt.Sprintf("\tclear(%s.%s)\n", receiver, fieldName))
+		} else {
+			buf.WriteString(fmt.Sprintf("\t%s.%s = nil\n", receiver, fieldName))
+		}
 
 	case *ast.StarExpr:
 		buf.WriteString(fmt.Sprintf("\tif %s.%s != nil {\n", receiver, fieldName))
@@ -179,22 +191,39 @@ func writeFieldReset(buf *bytes.Buffer, receiver, fieldName string, expr ast.Exp
 			buf.WriteString(fmt.Sprintf("\t\tif resetter, ok := interface{}(%s.%s).(interface{ Reset() }); ok {\n", receiver, fieldName))
 			buf.WriteString("\t\t\tresetter.Reset()\n")
 			buf.WriteString("\t\t} else {\n")
-			buf.WriteString(fmt.Sprintf("\t\t\t*%s.%s = %s\n", receiver, fieldName, getZeroValue(exprToString(t.X))))
+			typeName := exprToString(t.X)
+			if isPrimitive(typeName) {
+				buf.WriteString(fmt.Sprintf("\t\t\t*%s.%s = %s\n", receiver, fieldName, getZeroValue(typeName)))
+			} else {
+				buf.WriteString(fmt.Sprintf("\t\t\tvar zero %s\n\t\t\t*%s.%s = zero\n", typeName, receiver, fieldName))
+			}
 			buf.WriteString("\t\t}\n")
 		} else {
-			buf.WriteString(fmt.Sprintf("\t\t*%s.%s = %s\n", receiver, fieldName, getZeroValue(exprToString(t.X))))
+			buf.WriteString(fmt.Sprintf("\t\t*%s.%s = nil\n", receiver, fieldName))
 		}
 		buf.WriteString("\t}\n")
 
 	default:
+		typeStr := exprToString(expr)
 		buf.WriteString(fmt.Sprintf("\tif resetter, ok := interface{}(&%s.%s).(interface{ Reset() }); ok {\n", receiver, fieldName))
 		buf.WriteString("\t\tresetter.Reset()\n")
 		buf.WriteString(fmt.Sprintf("\t} else if resetter, ok := interface{}(%s.%s).(interface{ Reset() }); ok {\n", receiver, fieldName))
 		buf.WriteString("\t\tresetter.Reset()\n")
 		buf.WriteString("\t} else {\n")
-		buf.WriteString(fmt.Sprintf("\t\t%s.%s = %s\n", receiver, fieldName, getZeroValue(exprToString(expr))))
+		buf.WriteString(fmt.Sprintf("\t\tvar zero %s\n", typeStr))
+		buf.WriteString(fmt.Sprintf("\t\t%s.%s = zero\n", receiver, fieldName))
 		buf.WriteString("\t}\n")
 	}
+}
+
+func isPrimitive(typeName string) bool {
+	switch typeName {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"byte", "rune", "float32", "float64", "string", "bool":
+		return true
+	}
+	return false
 }
 
 func getZeroValue(typeName string) string {
@@ -208,10 +237,7 @@ func getZeroValue(typeName string) string {
 	case "bool":
 		return "false"
 	default:
-		if strings.HasPrefix(typeName, "map") || strings.HasPrefix(typeName, "[]") || strings.HasPrefix(typeName, "*") {
-			return "nil"
-		}
-		return typeName + "{}"
+		return "nil"
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"fmt"
 	"html/template"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/KonstantinPavlov/metric-service/internal/audit"
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
@@ -35,21 +35,8 @@ var (
 	buildCommit  string
 )
 
-func printBuildInfo() {
-	fmt.Printf("Build version: %s\n", getBuildValue(buildVersion))
-	fmt.Printf("Build date: %s\n", getBuildValue(buildDate))
-	fmt.Printf("Build commit: %s\n", getBuildValue(buildCommit))
-}
-
-func getBuildValue(val string) string {
-	if val == "" {
-		return "N/A"
-	}
-	return val
-}
-
 func main() {
-	printBuildInfo()
+	config.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 	zapLogger, _ := zap.NewProduction()
 	defer zapLogger.Sync()
 	err := parseFlags()

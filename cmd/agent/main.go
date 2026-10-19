@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/KonstantinPavlov/metric-service/internal/agent"
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
 	"go.uber.org/zap"
@@ -21,21 +21,8 @@ var (
 	buildCommit  string
 )
 
-func printBuildInfo() {
-	fmt.Printf("Build version: %s\n", getBuildValue(buildVersion))
-	fmt.Printf("Build date: %s\n", getBuildValue(buildDate))
-	fmt.Printf("Build commit: %s\n", getBuildValue(buildCommit))
-}
-
-func getBuildValue(val string) string {
-	if val == "" {
-		return "N/A"
-	}
-	return val
-}
-
 func main() {
-	printBuildInfo()
+	config.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 	err := parseFlags()
 	if err != nil {
 		panic(err)

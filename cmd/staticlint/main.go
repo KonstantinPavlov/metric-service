@@ -4,7 +4,7 @@
 //
 // # Механизм запуска и использования
 //
-// Утилита построена на базе пакета [golang.org/x/tools/go/analysis/multichecker], 
+// Утилита построена на базе пакета [golang.org/x/tools/go/analysis/multichecker],
 // благодаря чему скомпилированный бинарник поддерживает стандартный CLI-интерфейс.
 //
 // Сборка инструмента:
@@ -67,6 +67,8 @@
 package main
 
 import (
+	"strings"
+
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/multichecker"
 	"golang.org/x/tools/go/analysis/passes/asmdecl"
@@ -124,7 +126,7 @@ func main() {
 	// 2. Добавляем анализаторы из staticcheck.io по фильтру
 	for _, v := range staticcheck.Analyzers {
 		// Класс SA или явно указанные другие классы
-		if (v.Analyzer.Name[:2] == "SA") || staticCheckers[v.Analyzer.Name] {
+		if strings.HasPrefix(v.Analyzer.Name, "SA") || staticCheckers[v.Analyzer.Name] {
 			checkers = append(checkers, v.Analyzer)
 		}
 	}

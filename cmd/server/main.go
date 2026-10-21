@@ -14,6 +14,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/KonstantinPavlov/metric-service/internal/audit"
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
@@ -28,7 +29,14 @@ import (
 //go:embed views/*
 var viewsFS embed.FS
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	config.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 	zapLogger, _ := zap.NewProduction()
 	defer zapLogger.Sync()
 	err := parseFlags()

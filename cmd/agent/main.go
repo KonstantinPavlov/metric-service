@@ -9,12 +9,20 @@ import (
 	"time"
 
 	"github.com/KonstantinPavlov/metric-service/internal/agent"
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
 	"go.uber.org/zap"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	config.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 	err := parseFlags()
 	if err != nil {
 		panic(err)

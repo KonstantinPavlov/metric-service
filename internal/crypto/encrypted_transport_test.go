@@ -80,39 +80,44 @@ func TestAsymmetricEncryptTransport_Success(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 5. Выполняем круг (RoundTrip)
-	_, err = transport.RoundTrip(req)
+	resp, err := transport.RoundTrip(req)
 	assert.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close() // Исправлено: закрываем тело ответа
+	}
 
 	// 6. ПРОВЕРКИ:
-	// Данные не должны быть равны исходному тексту
 	assert.NotEqual(t, plainText, interceptedBytes)
-	// Длина контента в заголовках должна обновиться до размера зашифрованных байт
 	assert.Equal(t, int64(len(interceptedBytes)), interceptedContentLength)
 
-	// Самый важный шаг: расшифровываем приватным ключом то, что улетело в сеть
+	// Расшифровываем приватным ключом то, что улетело в сеть
 	decryptedBytes, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privKey, interceptedBytes, nil)
-	assert.NoError(t, err, "Транспорт должен зашифровать данные так, чтобы их можно было расшифровать приватным ключом")
+	assert.NoError(t, err)
 	assert.Equal(t, plainText, decryptedBytes)
 }
 
 func TestAsymmetricEncryptTransport_BypassIfNoKey(t *testing.T) {
-	// Флаг вызова, чтобы убедиться, что mockNext отработал
 	mockCalled := false
 
 	mockNext := RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		mockCalled = true
-		return &http.Response{StatusCode: http.StatusOK}, nil
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte{})),
+		}, nil
 	})
 
 	// Если путь к ключу пустой, должен вернуться оригинальный транспорт
 	transport, err := NewAsymmetricEncryptTransport("", mockNext)
 	assert.NoError(t, err)
-	
-	// Безопасно проверяем работоспособность возвращенного транспорта
+
 	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/ping", nil)
 	resp, err := transport.RoundTrip(req)
-	
 	assert.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
+
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.True(t, mockCalled, "Оригинальный mockNext транспорт должен быть вызван напрямую")
 }
@@ -121,7 +126,10 @@ func TestAsymmetricEncryptTransport_NilOrEmptyBody(t *testing.T) {
 	keyPath, _ := generateTestPublicKeyFile(t)
 
 	mockNext := RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusOK}, nil
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte{})),
+		}, nil
 	})
 
 	transport, err := NewAsymmetricEncryptTransport(keyPath, mockNext)
@@ -129,18 +137,27 @@ func TestAsymmetricEncryptTransport_NilOrEmptyBody(t *testing.T) {
 
 	// Сценарий 1: req.Body == nil (например, GET запрос)
 	reqNil, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/ping", nil)
-	_, err = transport.RoundTrip(reqNil)
+	respNil, err := transport.RoundTrip(reqNil)
 	assert.NoError(t, err)
+	if respNil != nil && respNil.Body != nil {
+		defer respNil.Body.Close()
+	}
 
 	// Сценарий 2: req.Body != nil, но длина сообщения 0 байт
 	reqEmpty, _ := http.NewRequest(http.MethodPost, "http://localhost:8080/updates/", bytes.NewReader([]byte{}))
-	_, err = transport.RoundTrip(reqEmpty)
+	respEmpty, err := transport.RoundTrip(reqEmpty)
 	assert.NoError(t, err)
+	if respEmpty != nil && respEmpty.Body != nil {
+		defer respEmpty.Body.Close()
+	}
 }
 
 func TestNewAsymmetricEncryptTransport_Errors(t *testing.T) {
 	mockNext := RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusOK}, nil
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte{})),
+		}, nil
 	})
 
 	// Сценарий 1: Файл ключа отсутствует

@@ -21,15 +21,22 @@ func TestMetricsExporter_Start(t *testing.T) {
 	calledChan := make(chan struct{})
 	mock := &testutils.MockProvider{CalledChan: calledChan}
 
-	mc := MetricsExporter{
-		provider: mock,
-		log:      zapLogger,
-	}
-
+	// Используем конструктор, чтобы внутренние каналы (jobsChannel) корректно инициализировались
+	mc, err := NewMetricsExporter(
+		"localhost:8080",
+		mock,
+		http.Client{},
+		zapLogger,
+		"",
+		"",
+		1,
+	)
+	assert.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mc.Start(ctx, 10*time.Millisecond)
+	err = mc.Start(ctx, 10*time.Millisecond)
+	assert.NoError(t, err)
 
 	for i := 1; i <= 2; i++ {
 		select {
@@ -47,15 +54,23 @@ func TestMetricsExporter_Stop(t *testing.T) {
 	defer zapLogger.Sync()
 	calledChan := make(chan struct{})
 	mock := &testutils.MockProvider{CalledChan: calledChan}
-	mc := MetricsExporter{
-		provider: mock,
-		log:      zapLogger,
-	}
 
+	// Используем конструктор, чтобы избежать nil channels при закрытии контекста в Start
+	mc, err := NewMetricsExporter(
+		"localhost:8080",
+		mock,
+		http.Client{},
+		zapLogger,
+		"",
+		"",
+		1,
+	)
+	assert.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mc.Start(ctx, 10*time.Millisecond)
+	err = mc.Start(ctx, 10*time.Millisecond)
+	assert.NoError(t, err)
 
 	cancel()
 
@@ -82,7 +97,6 @@ func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestMetricsExporter_Export(t *testing.T) {
-
 	zapLogger, _ := zap.NewDevelopment()
 	defer zapLogger.Sync()
 	callCounter := 0
@@ -92,7 +106,8 @@ func TestMetricsExporter_Export(t *testing.T) {
 	provider.SaveGauge(t.Context(), "some-gauge", 1)
 	header := http.Header{}
 	header.Add("Content-Type", "application/json")
-	exporter := NewMetricsExporter(
+	exporter, err := NewMetricsExporter(
+
 		"",
 		provider,
 		http.Client{
@@ -107,11 +122,13 @@ func TestMetricsExporter_Export(t *testing.T) {
 		},
 		zapLogger,
 		"",
+		"",
 		1,
 	)
+	assert.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := exporter.Start(ctx, 10*time.Hour)
+	err = exporter.Start(ctx, 10*time.Hour)
 	assert.NoError(t, err)
 	exporter.Export(context.Background())
 	// Ждем, пока воркер асинхронно вычитает задачу из канала и сделает HTTP-запрос

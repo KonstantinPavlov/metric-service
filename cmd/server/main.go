@@ -110,6 +110,14 @@ func run(zapLogger *zap.Logger) error {
 		httpServer.Use(middleware.Sha256ResponseMiddleware(keyBytes))
 	}
 
+	if flagCryptoKeyPath != "" {
+		middle, err := middleware.NewPrivateKeyMiddleware(flagCryptoKeyPath)
+		if err != nil {
+			return nil
+		}
+		httpServer.Use(middle.Middleware())
+	}
+
 	// observers
 	if flagAuditFile != "" {
 		o, err := audit.NewAuditFileObserver(zapLogger, flagAuditFile)

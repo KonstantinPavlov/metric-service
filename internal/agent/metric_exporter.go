@@ -28,8 +28,19 @@ type MetricsExporter struct {
 	jobsChannel     chan []model.Metrics
 }
 
-func NewMetricsExporter(serverURL string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, rateLimit int) MetricsExporter {
-	return MetricsExporter{
+func NewMetricsExporter(serverURL string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, publicCryptoKeyPath string, rateLimit int) (*MetricsExporter, error) {
+	if publicCryptoKeyPath != "" {
+		encryptTransport, err := crypto.NewAsymmetricEncryptTransport(publicCryptoKeyPath, client.Transport)
+		if err != nil {
+			log.Fatal("Failed to initialize asymmetric crypto transport", zap.Error(err))
+			return nil, err
+		}
+		client.Transport = encryptTransport
+		log.Info("Asymmetric encryption layer added successfully", zap.String("path", publicCryptoKeyPath))
+
+	}
+
+	return &MetricsExporter{
 		serverURL:       serverURL,
 		provider:        provider,
 		client:          client,
@@ -38,7 +49,7 @@ func NewMetricsExporter(serverURL string, provider service.MetricsProvider, clie
 		cryptoKey:       make([]byte, 0),
 		rateLimit:       rateLimit,
 		jobsChannel:     make(chan []model.Metrics, rateLimit*2),
-	}
+	}, nil
 }
 
 func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) error {

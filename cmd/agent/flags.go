@@ -12,6 +12,7 @@ var flagReportInterval int
 var flagPollInterval int
 var flagCryptoKey string
 var flagRateLimit int
+var flagPublicCryptoKeyPath string
 
 func parseFlags() error {
 	flag.StringVar(&flagServerAddr, "a", "localhost:8080", "address and port metric server")
@@ -19,6 +20,7 @@ func parseFlags() error {
 	flag.IntVar(&flagPollInterval, "p", 2, "poll interval in seconds")
 	flag.StringVar(&flagCryptoKey, "k", "", "SHA-256 key as 64-character hex string")
 	flag.IntVar(&flagRateLimit, "l", 1, "requests to server rate limit")
+	flag.StringVar(&flagPublicCryptoKeyPath, "crypto-key", "", "Public key path")
 	flag.Parse()
 
 	address := os.Getenv("ADDRESS")
@@ -51,6 +53,11 @@ func parseFlags() error {
 	}
 	if rateLimit != nil {
 		flagRateLimit = *rateLimit
+	}
+
+	cryptoKeyPath := os.Getenv("CRYPTO_KEY")
+	if cryptoKeyPath != "" {
+		flagPublicCryptoKeyPath = cryptoKeyPath
 	}
 
 	return nil

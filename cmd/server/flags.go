@@ -16,15 +16,18 @@ var flagDBDSN string
 var flagCryptoKey string
 var flagAuditFile string
 var flagAuditURL string
+var flagCryptoKeyPath string
 
 func parseFlags() error {
 	flag.StringVar(&flagRunAddr, "a", "localhost:8080", "address and port to run server")
 	flag.IntVar(&flagStoreIntervalSeconds, "i", 300, "store interval on disk - if 0 - sync store on disk")
 	flag.StringVar(&flagStorePath, "f", "", "path to storage file")
 	flag.BoolVar(&flagRestore, "r", false, "restore data from storage on startup")
+	flag.StringVar(&flagCryptoKey, "k", "", "SHA-256 key as 64-character hex string")
 	flag.StringVar(&flagDBDSN, "d", "", "DSN for PostgresSQL")
 	flag.StringVar(&flagAuditFile, "audit-file", "", "Path to audit file")
 	flag.StringVar(&flagAuditURL, "audit-url", "", "Url for audit endpoint")
+	flag.StringVar(&flagCryptoKeyPath, "crypto-key", "", "Private key path")
 	flag.Parse()
 
 	address := os.Getenv("ADDRESS")
@@ -71,6 +74,11 @@ func parseFlags() error {
 	auditURL := os.Getenv("AUDIT_URL")
 	if auditURL != "" {
 		flagAuditURL = auditURL
+	}
+
+	cryptoKeyPath := os.Getenv("CRYPTO_KEY")
+	if cryptoKeyPath != "" {
+		flagCryptoKeyPath = cryptoKeyPath
 	}
 
 	return nil

@@ -52,10 +52,9 @@ func TestMetricsExporter_Start(t *testing.T) {
 func TestMetricsExporter_Stop(t *testing.T) {
 	zapLogger, _ := zap.NewDevelopment()
 	defer zapLogger.Sync()
-	calledChan := make(chan struct{})
+	calledChan := make(chan struct{}, 10)
 	mock := &testutils.MockProvider{CalledChan: calledChan}
 
-	// Используем конструктор, чтобы избежать nil channels при закрытии контекста в Start
 	mc, err := NewMetricsExporter(
 		"localhost:8080",
 		mock,
@@ -67,27 +66,17 @@ func TestMetricsExporter_Stop(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	err = mc.Start(ctx, 10*time.Millisecond)
 	assert.NoError(t, err)
 
+	// os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT
 	cancel()
 
-	assert.Eventually(t, func() bool {
-		waitFinished := make(chan struct{})
-		go func() {
-			mc.wg.Wait()
-			close(waitFinished)
-		}()
-
-		select {
-		case <-waitFinished:
-			return true // WaitGroup in MetricCollector unlocked
-		case <-time.After(10 * time.Millisecond):
-			return false // Still waiting
-		}
-	}, 100*time.Millisecond, 10*time.Millisecond, "Gorutine must stop after cancel()")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer shutdownCancel()
+	err = mc.Stop(shutdownCtx)
+	assert.NoError(t, err, "Exporter must stop cleanly within shutdown context timeout")
 }
 
 type RoundTripperFunc func(req *http.Request) (*http.Response, error)

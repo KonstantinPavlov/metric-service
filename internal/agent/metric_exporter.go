@@ -26,13 +26,15 @@ type MetricsExporter struct {
 	wg              sync.WaitGroup
 	rateLimit       int
 	jobsChannel     chan []model.Metrics
+	// for jobsChannel close
+	closeOnce sync.Once
 }
 
 func NewMetricsExporter(serverURL string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, publicCryptoKeyPath string, rateLimit int) (*MetricsExporter, error) {
 	if publicCryptoKeyPath != "" {
 		encryptTransport, err := crypto.NewAsymmetricEncryptTransport(publicCryptoKeyPath, client.Transport)
 		if err != nil {
-			log.Fatal("Failed to initialize asymmetric crypto transport", zap.Error(err))
+			log.Error("Failed to initialize asymmetric crypto transport", zap.Error(err))
 			return nil, err
 		}
 		client.Transport = encryptTransport
@@ -53,7 +55,6 @@ func NewMetricsExporter(serverURL string, provider service.MetricsProvider, clie
 }
 
 func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) error {
-	me.wg.Add(1)
 	if me.cryptoKeyString != "" {
 		keyBytes, err := crypto.DecodeKeyString(me.cryptoKeyString)
 		if err != nil {
@@ -69,6 +70,7 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) er
 		go me.worker(ctx)
 	}
 
+	me.wg.Add(1)
 	go func() {
 		defer me.wg.Done()
 		ticker := time.NewTicker(interval)
@@ -81,10 +83,6 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) er
 				me.Export(ctx)
 				me.log.Info("End exporting metrics...")
 			case <-ctx.Done():
-				// closing channel!
-				if me.jobsChannel != nil {
-					close(me.jobsChannel)
-				}
 				return
 			}
 		}
@@ -92,8 +90,28 @@ func (me *MetricsExporter) Start(ctx context.Context, interval time.Duration) er
 	return nil
 }
 
-func (me *MetricsExporter) Stop() {
-	me.wg.Wait()
+func (me *MetricsExporter) Stop(ctx context.Context) error {
+	me.log.Info("Forcing final metrics export (flush) before exit...")
+	// final export
+	me.Export(ctx)
+	// closing jobs channel here now
+	me.closeOnce.Do(func() {
+		close(me.jobsChannel)
+	})
+
+	c := make(chan struct{})
+	go func() {
+		me.wg.Wait()
+		close(c)
+	}()
+
+	select {
+	case <-c:
+		me.log.Info("All background workers stopped cleanly.")
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (me *MetricsExporter) Export(ctx context.Context) {
@@ -120,12 +138,16 @@ func (me *MetricsExporter) Export(ctx context.Context) {
 	select {
 	case me.jobsChannel <- requests:
 	case <-ctx.Done():
+		me.log.Warn("Skipped sending metrics to channel due to context expiration")
 		return
+	default:
+		me.log.Warn("Jobs channel is no longer accepting metrics")
 	}
 }
 
 func (me *MetricsExporter) worker(ctx context.Context) {
 	defer me.wg.Done()
+
 	for {
 		select {
 		case metrics, ok := <-me.jobsChannel:
@@ -133,7 +155,19 @@ func (me *MetricsExporter) worker(ctx context.Context) {
 				return
 			}
 			me.postMetrics(ctx, metrics)
+
 		case <-ctx.Done():
+			// gracefull shutdown
+			flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			for metrics := range me.jobsChannel {
+				if err := flushCtx.Err(); err != nil {
+					me.log.Error("Failing to flush remaining metrics: shutdown timeout reached", zap.Error(err))
+					cancel()
+					return
+				}
+				me.postMetrics(flushCtx, metrics)
+			}
+			cancel()
 			return
 		}
 	}

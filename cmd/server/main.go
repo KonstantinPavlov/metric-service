@@ -67,7 +67,7 @@ func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
 
 func run(zapLogger *zap.Logger) error {
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	storage := defineStorage(zapLogger)
@@ -156,14 +156,20 @@ func run(zapLogger *zap.Logger) error {
 
 	// gracefull shutdown
 	<-ctx.Done()
-	storage.Stop()
-	webHandler.Stop()
+	zapLogger.Info("Shutting down server gracefully...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// First is echo web server!
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		zapLogger.Fatal("Gracefull shutdown failed", zap.Error(err))
+		zapLogger.Error("Web server shutdown failed", zap.Error(err))
+	} else {
+		zapLogger.Info("Web server stopped successfully (no active connections)")
 	}
-	zapLogger.Info("Web server stopped")
+	// Second is web Handler
+	webHandler.Stop()
+	// And storage will be last - no more requests
+	storage.Stop()
+
 	if storageErr != nil {
 		return storageErr
 	}

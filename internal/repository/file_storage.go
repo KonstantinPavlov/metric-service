@@ -75,6 +75,14 @@ func (fs *FileStorage) Start(ctx context.Context) error {
 
 func (fs *FileStorage) Stop() {
 	fs.wg.Wait()
+	// gracefull store metrics for syncSave
+	if !fs.isSyncSave() {
+		fs.log.Info("Executing final metrics dump to file before exit...", zap.String("storage_path", fs.cfg.storagePath))
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		fs.storeMetricsAsync(shutdownCtx)
+		fs.log.Info("Final metrics dump finished successfully")
+	}
 }
 
 func (fs *FileStorage) Restore(ctx context.Context) {

@@ -188,8 +188,8 @@ func TestLoadAndMerge(t *testing.T) {
 	t.Run("CONFIG environment variable overrides config path parameter", func(t *testing.T) {
 		// file for ENV test
 		envConfigPath := filepath.Join(tmpDir, "env_config.json")
-		envJsonContent := `{"address": "env-file-host:1111"}`
-		if err := os.WriteFile(envConfigPath, []byte(envJsonContent), 0644); err != nil {
+		envJSONContent := `{"address": "env-file-host:1111"}`
+		if err := os.WriteFile(envConfigPath, []byte(envJSONContent), 0644); err != nil {
 			t.Fatalf("failed to create temp env config file: %v", err)
 		}
 

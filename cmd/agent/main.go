@@ -37,13 +37,13 @@ func main() {
 	provider := service.NewDefaultProvider(storage, zapLogger)
 	collector := agent.NewMetricCollector(provider, zapLogger)
 
-	collector.Start(ctx, time.Duration(flagPollInterval)*time.Second)
-	exporter, err := agent.NewMetricsExporter(flagServerAddr, provider, http.Client{}, zapLogger, flagCryptoKey, flagPublicCryptoKeyPath, flagRateLimit)
+	collector.Start(ctx, time.Duration(cfg.PollInterval)*time.Second)
+	exporter, err := agent.NewMetricsExporter(cfg.ServerAddr, provider, http.Client{}, zapLogger, cfg.CryptoKey, cfg.PublicCryptoKey, cfg.RateLimit)
 	if err != nil {
 		zapLogger.Error("failed to create exporter!", zap.Error(err))
 		return
 	}
-	err = exporter.Start(ctx, time.Duration(flagReportInterval)*time.Second)
+	err = exporter.Start(ctx, time.Duration(cfg.ReportInterval)*time.Second)
 	if err != nil {
 		zapLogger.Fatal("failed to start exporter!", zap.Error(err))
 		return
@@ -60,5 +60,5 @@ func main() {
 	} else {
 		zapLogger.Info("all metrics successfully exported")
 	}
-	
+
 }

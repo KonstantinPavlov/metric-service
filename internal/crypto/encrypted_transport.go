@@ -13,7 +13,7 @@ import (
 	"os"
 )
 
-type AsymmetricEncryptTransport  struct {
+type AsymmetricEncryptTransport struct {
 	publicKey *rsa.PublicKey
 	next      http.RoundTripper
 }
@@ -53,9 +53,9 @@ func NewAsymmetricEncryptTransport(publicKeyPath string, next http.RoundTripper)
 	}, nil
 }
 
-func (t *AsymmetricEncryptTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (a *AsymmetricEncryptTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body == nil {
-		return t.next.RoundTrip(req)
+		return a.next.RoundTrip(req)
 	}
 
 	bodyBytes, err := io.ReadAll(req.Body)
@@ -66,10 +66,10 @@ func (t *AsymmetricEncryptTransport) RoundTrip(req *http.Request) (*http.Respons
 
 	if len(bodyBytes) == 0 {
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-		return t.next.RoundTrip(req)
+		return a.next.RoundTrip(req)
 	}
 
-	encryptedBytes, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, t.publicKey, bodyBytes, nil)
+	encryptedBytes, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, a.publicKey, bodyBytes, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt request body: %w", err)
 	}
@@ -77,5 +77,5 @@ func (t *AsymmetricEncryptTransport) RoundTrip(req *http.Request) (*http.Respons
 	req.Body = io.NopCloser(bytes.NewReader(encryptedBytes))
 	req.ContentLength = int64(len(encryptedBytes))
 
-	return t.next.RoundTrip(req)
+	return a.next.RoundTrip(req)
 }

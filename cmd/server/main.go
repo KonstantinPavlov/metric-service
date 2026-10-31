@@ -49,15 +49,15 @@ func main() {
 }
 
 func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
-	if flagDBDSN != "" {
-		return repository.NewPgStorage(flagDBDSN, zapLogger)
+	if cfg.DBDSN != "" {
+		return repository.NewPgStorage(cfg.DBDSN, zapLogger)
 	}
 	memStorage := repository.NewMemStorage()
-	if flagStorePath != "" {
+	if cfg.StorePath != "" {
 		return repository.NewFileStorage(
-			flagStoreIntervalSeconds,
-			flagStorePath,
-			flagRestore,
+			cfg.StoreIntervalSeconds,
+			cfg.StorePath,
+			cfg.Restore,
 			memStorage,
 			zapLogger,
 		)
@@ -100,8 +100,8 @@ func run(zapLogger *zap.Logger) error {
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
 
-	if flagCryptoKey != "" {
-		keyBytes, err := crypto.DecodeKeyString(flagCryptoKey)
+	if cfg.CryptoKey != "" {
+		keyBytes, err := crypto.DecodeKeyString(cfg.CryptoKey)
 		if err != nil {
 			return err
 		}
@@ -110,25 +110,25 @@ func run(zapLogger *zap.Logger) error {
 		httpServer.Use(middleware.Sha256ResponseMiddleware(keyBytes))
 	}
 
-	if flagCryptoKeyPath != "" {
-		middle, err := middleware.NewPrivateKeyMiddleware(flagCryptoKeyPath)
+	if cfg.CryptoKeyPath != "" {
+		middle, err := middleware.NewPrivateKeyMiddleware(cfg.CryptoKeyPath)
 		if err != nil {
-			return nil
+			return err
 		}
 		httpServer.Use(middle.Middleware())
 	}
 
 	// observers
-	if flagAuditFile != "" {
-		o, err := audit.NewAuditFileObserver(zapLogger, flagAuditFile)
+	if cfg.AuditFile != "" {
+		o, err := audit.NewAuditFileObserver(zapLogger, cfg.AuditFile)
 		if err != nil {
 			return err
 		}
 		webHandler.Register(o)
 	}
 
-	if flagAuditURL != "" {
-		o := audit.NewRemoteAuditObserver(zapLogger, flagAuditURL)
+	if cfg.AuditURL != "" {
+		o := audit.NewRemoteAuditObserver(zapLogger, cfg.AuditURL)
 		webHandler.Register(o)
 	}
 
@@ -148,7 +148,7 @@ func run(zapLogger *zap.Logger) error {
 
 	go func() {
 		zapLogger.Info("Starting Web server...")
-		err := httpServer.Start(flagRunAddr)
+		err := httpServer.Start(cfg.RunAddr)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))
 		}

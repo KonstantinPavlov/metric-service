@@ -42,10 +42,10 @@ func NewPrivateKeyMiddleware(keyPath string) (*PrivateKeyMiddleware, error) {
 	return &PrivateKeyMiddleware{privateKey: privateKey}, nil
 }
 
-func (d *PrivateKeyMiddleware) Middleware() echo.MiddlewareFunc {
+func (p *PrivateKeyMiddleware) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			if d.privateKey == nil {
+			if p.privateKey == nil {
 				return next(c)
 			}
 
@@ -59,7 +59,7 @@ func (d *PrivateKeyMiddleware) Middleware() echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			decryptedBody, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, d.privateKey, encryptedBody, nil)
+			decryptedBody, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, p.privateKey, encryptedBody, nil)
 			if err != nil {
 				return c.String(http.StatusBadRequest, "decryption failed: "+err.Error())
 			}

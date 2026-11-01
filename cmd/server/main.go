@@ -49,15 +49,15 @@ func main() {
 }
 
 func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
-	if flagDBDSN != "" {
-		return repository.NewPgStorage(flagDBDSN, zapLogger)
+	if cfg.DBDSN != "" {
+		return repository.NewPgStorage(cfg.DBDSN, zapLogger)
 	}
 	memStorage := repository.NewMemStorage()
-	if flagStorePath != "" {
+	if cfg.StorePath != "" {
 		return repository.NewFileStorage(
-			flagStoreIntervalSeconds,
-			flagStorePath,
-			flagRestore,
+			cfg.StoreIntervalSeconds,
+			cfg.StorePath,
+			cfg.Restore,
 			memStorage,
 			zapLogger,
 		)
@@ -67,7 +67,7 @@ func defineStorage(zapLogger *zap.Logger) repository.MetricRepository {
 
 func run(zapLogger *zap.Logger) error {
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	storage := defineStorage(zapLogger)
@@ -100,8 +100,8 @@ func run(zapLogger *zap.Logger) error {
 	httpServer := echo.New()
 	httpServer.Use(logger.ZapMiddleware(zapLogger))
 
-	if flagCryptoKey != "" {
-		keyBytes, err := crypto.DecodeKeyString(flagCryptoKey)
+	if cfg.CryptoKey != "" {
+		keyBytes, err := crypto.DecodeKeyString(cfg.CryptoKey)
 		if err != nil {
 			return err
 		}
@@ -110,17 +110,25 @@ func run(zapLogger *zap.Logger) error {
 		httpServer.Use(middleware.Sha256ResponseMiddleware(keyBytes))
 	}
 
+	if cfg.CryptoKeyPath != "" {
+		middle, err := middleware.NewPrivateKeyMiddleware(cfg.CryptoKeyPath)
+		if err != nil {
+			return err
+		}
+		httpServer.Use(middle.Middleware())
+	}
+
 	// observers
-	if flagAuditFile != "" {
-		o, err := audit.NewAuditFileObserver(zapLogger, flagAuditFile)
+	if cfg.AuditFile != "" {
+		o, err := audit.NewAuditFileObserver(zapLogger, cfg.AuditFile)
 		if err != nil {
 			return err
 		}
 		webHandler.Register(o)
 	}
 
-	if flagAuditURL != "" {
-		o := audit.NewRemoteAuditObserver(zapLogger, flagAuditURL)
+	if cfg.AuditURL != "" {
+		o := audit.NewRemoteAuditObserver(zapLogger, cfg.AuditURL)
 		webHandler.Register(o)
 	}
 
@@ -140,7 +148,7 @@ func run(zapLogger *zap.Logger) error {
 
 	go func() {
 		zapLogger.Info("Starting Web server...")
-		err := httpServer.Start(flagRunAddr)
+		err := httpServer.Start(cfg.RunAddr)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			zapLogger.Fatal("Failed to start echo web server", zap.Error(err))
 		}
@@ -148,14 +156,20 @@ func run(zapLogger *zap.Logger) error {
 
 	// gracefull shutdown
 	<-ctx.Done()
-	storage.Stop()
-	webHandler.Stop()
+	zapLogger.Info("Shutting down server gracefully...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// First is echo web server!
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		zapLogger.Fatal("Gracefull shutdown failed", zap.Error(err))
+		zapLogger.Error("Web server shutdown failed", zap.Error(err))
+	} else {
+		zapLogger.Info("Web server stopped successfully (no active connections)")
 	}
-	zapLogger.Info("Web server stopped")
+	// Second is web Handler
+	webHandler.Stop()
+	// And storage will be last - no more requests
+	storage.Stop()
+
 	if storageErr != nil {
 		return storageErr
 	}

@@ -18,6 +18,7 @@ type ServerConfig struct {
 	AuditFile            string `json:"-" flag:"audit-file"`
 	AuditURL             string `json:"-" flag:"audit-url"`
 	CryptoKeyPath        string `json:"crypto_key" flag:"crypto-key"`
+	TrustedSubNet        string `json:"trusted_subnet" flag:"t"`
 	ConfigPath           string `json:"-" flag:"config"`
 }
 
@@ -25,7 +26,7 @@ var cfg ServerConfig
 
 func parseFlags() error {
 	fs := flag.CommandLine
-	
+
 	fs.StringVar(&cfg.RunAddr, "a", "localhost:8080", "address and port to run server")
 	fs.IntVar(&cfg.StoreIntervalSeconds, "i", 300, "store interval on disk")
 	fs.StringVar(&cfg.StorePath, "f", "", "path to storage file")
@@ -35,6 +36,7 @@ func parseFlags() error {
 	fs.StringVar(&cfg.AuditFile, "audit-file", "", "Path to audit file")
 	fs.StringVar(&cfg.AuditURL, "audit-url", "", "Url for audit endpoint")
 	fs.StringVar(&cfg.CryptoKeyPath, "crypto-key", "", "Private key path")
+	fs.StringVar(&cfg.TrustedSubNet, "t", "", "Trusted subnet")
 	fs.StringVar(&cfg.ConfigPath, "config", "", "path to configuration file")
 
 	if err := config.LoadAndMerge(fs, cfg.ConfigPath, &cfg); err != nil {
@@ -48,6 +50,7 @@ func parseFlags() error {
 	cfg.AuditFile = config.EnvOrStr("AUDIT_FILE", cfg.AuditFile)
 	cfg.AuditURL = config.EnvOrStr("AUDIT_URL", cfg.AuditURL)
 	cfg.CryptoKeyPath = config.EnvOrStr("CRYPTO_KEY", cfg.CryptoKeyPath)
+	cfg.CryptoKeyPath = config.EnvOrStr("TRUSTED_SUBNET", cfg.TrustedSubNet)
 
 	if storeInterval, err := config.ParseIntEnvVal("STORE_INTERVAL"); err == nil && storeInterval != nil {
 		cfg.StoreIntervalSeconds = *storeInterval

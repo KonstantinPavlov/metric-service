@@ -118,6 +118,12 @@ func run(zapLogger *zap.Logger) error {
 		httpServer.Use(middle.Middleware())
 	}
 
+	subnetGuard, err := middleware.NewSubnetGuard(cfg.TrustedSubNet)
+	if err != nil {
+		return err
+	}
+	httpServer.Use(subnetGuard.Middleware())
+	
 	// observers
 	if cfg.AuditFile != "" {
 		o, err := audit.NewAuditFileObserver(zapLogger, cfg.AuditFile)

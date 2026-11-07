@@ -5,11 +5,12 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"io"
+	"io"	
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/model"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
@@ -218,6 +219,7 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 		if sha256HeaderValue != "" {
 			request.Header.Set("HashSHA256", sha256HeaderValue)
 		}
+		request.Header.Set("X-Real-IP", config.GetMachineIP())
 		resp, err = me.client.Do(request)
 		if err == nil {
 			// all fine!

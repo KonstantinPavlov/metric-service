@@ -19,6 +19,7 @@ type ServerConfig struct {
 	AuditURL             string `json:"-" flag:"audit-url"`
 	CryptoKeyPath        string `json:"crypto_key" flag:"crypto-key"`
 	TrustedSubNet        string `json:"trusted_subnet" flag:"t"`
+	GRPCAddr             string `json:"grpc_address" flag:"g"`
 	ConfigPath           string `json:"-" flag:"config"`
 }
 
@@ -37,6 +38,7 @@ func parseFlags() error {
 	fs.StringVar(&cfg.AuditURL, "audit-url", "", "Url for audit endpoint")
 	fs.StringVar(&cfg.CryptoKeyPath, "crypto-key", "", "Private key path")
 	fs.StringVar(&cfg.TrustedSubNet, "t", "", "Trusted subnet")
+	fs.StringVar(&cfg.GRPCAddr, "g", "", "address and port to run gRPC server")
 	fs.StringVar(&cfg.ConfigPath, "config", "", "path to configuration file")
 
 	if err := config.LoadAndMerge(fs, cfg.ConfigPath, &cfg); err != nil {
@@ -51,6 +53,7 @@ func parseFlags() error {
 	cfg.AuditURL = config.EnvOrStr("AUDIT_URL", cfg.AuditURL)
 	cfg.CryptoKeyPath = config.EnvOrStr("CRYPTO_KEY", cfg.CryptoKeyPath)
 	cfg.CryptoKeyPath = config.EnvOrStr("TRUSTED_SUBNET", cfg.TrustedSubNet)
+	cfg.GRPCAddr = config.EnvOrStr("GRPC_ADDRESS", cfg.GRPCAddr)
 
 	if storeInterval, err := config.ParseIntEnvVal("STORE_INTERVAL"); err == nil && storeInterval != nil {
 		cfg.StoreIntervalSeconds = *storeInterval

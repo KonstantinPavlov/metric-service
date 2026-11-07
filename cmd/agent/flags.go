@@ -12,6 +12,7 @@ type AgentConfig struct {
 	CryptoKey       string                 `json:"-" flag:"k"`
 	RateLimit       int                    `json:"-" flag:"l"`
 	PublicCryptoKey string                 `json:"crypto_key" flag:"crypto-key"`
+	GRPCServerAddr  string                 `json:"grpc_address" flag:"g"`
 	ConfigPath      string                 `json:"-" flag:"config"`
 }
 
@@ -25,6 +26,7 @@ func parseFlags() error {
 	fs.StringVar(&cfg.CryptoKey, "k", "", "SHA-256 key as 64-character hex string")
 	fs.IntVar(&cfg.RateLimit, "l", 1, "requests to server rate limit")
 	fs.StringVar(&cfg.PublicCryptoKey, "crypto-key", "", "Public key path")
+	fs.StringVar(&cfg.GRPCServerAddr, "g", "", "gRPC server address")
 	fs.StringVar(&cfg.ConfigPath, "config", "", "path to configuration file")
 
 	if err := config.LoadAndMerge(fs, cfg.ConfigPath, &cfg); err != nil {
@@ -34,6 +36,7 @@ func parseFlags() error {
 	cfg.ServerAddr = config.EnvOrStr("ADDRESS", cfg.ServerAddr)
 	cfg.CryptoKey = config.EnvOrStr("KEY", cfg.CryptoKey)
 	cfg.PublicCryptoKey = config.EnvOrStr("CRYPTO_KEY", cfg.PublicCryptoKey)
+	cfg.GRPCServerAddr = config.EnvOrStr("GRPC_ADDRESS", cfg.GRPCServerAddr)
 
 	if reportInterval, err := config.ParseIntEnvVal("REPORT_INTERVAL"); err == nil && reportInterval != nil {
 		cfg.ReportInterval = config.DurationSeconds(*reportInterval)

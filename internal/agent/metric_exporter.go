@@ -202,9 +202,9 @@ func (me *MetricsExporter) worker(ctx context.Context) {
 					return
 				}
 				if me.grpcClient != nil {
-					me.postMetricsGRPC(ctx, metrics)
+					me.postMetricsGRPC(flushCtx, metrics)
 				} else {
-					me.postMetrics(ctx, metrics)
+					me.postMetrics(flushCtx, metrics)
 				}
 			}
 			cancel()

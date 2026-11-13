@@ -52,7 +52,7 @@ func parseFlags() error {
 	cfg.AuditFile = config.EnvOrStr("AUDIT_FILE", cfg.AuditFile)
 	cfg.AuditURL = config.EnvOrStr("AUDIT_URL", cfg.AuditURL)
 	cfg.CryptoKeyPath = config.EnvOrStr("CRYPTO_KEY", cfg.CryptoKeyPath)
-	cfg.CryptoKeyPath = config.EnvOrStr("TRUSTED_SUBNET", cfg.TrustedSubNet)
+	cfg.TrustedSubNet = config.EnvOrStr("TRUSTED_SUBNET", cfg.TrustedSubNet)
 	cfg.GRPCAddr = config.EnvOrStr("GRPC_ADDRESS", cfg.GRPCAddr)
 
 	if storeInterval, err := config.ParseIntEnvVal("STORE_INTERVAL"); err == nil && storeInterval != nil {

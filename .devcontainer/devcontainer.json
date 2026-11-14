@@ -16,5 +16,8 @@
 	// "remoteUser": "root"
 	"runArgs": [
 		"--cap-add=SYS_PTRACE"
-	]
+	],
+	"features": {
+		"ghcr.io/devcontainers-extra/features/protoc:1": {}
+	}
 }

@@ -10,14 +10,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KonstantinPavlov/metric-service/internal/config"
 	"github.com/KonstantinPavlov/metric-service/internal/crypto"
 	"github.com/KonstantinPavlov/metric-service/internal/model"
+	pb "github.com/KonstantinPavlov/metric-service/internal/proto"
 	"github.com/KonstantinPavlov/metric-service/internal/service"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type MetricsExporter struct {
-	serverURL       string
+	serverURL string
+	// grpc
+	grpcAddr   string
+	grpcConn   *grpc.ClientConn
+	grpcClient pb.MetricsClient
+	//
 	provider        service.MetricsProvider
 	client          http.Client
 	log             *zap.Logger
@@ -30,7 +40,7 @@ type MetricsExporter struct {
 	closeOnce sync.Once
 }
 
-func NewMetricsExporter(serverURL string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, publicCryptoKeyPath string, rateLimit int) (*MetricsExporter, error) {
+func NewMetricsExporter(serverURL string, grpcAddr string, provider service.MetricsProvider, client http.Client, log *zap.Logger, cryptoKey string, publicCryptoKeyPath string, rateLimit int) (*MetricsExporter, error) {
 	if publicCryptoKeyPath != "" {
 		encryptTransport, err := crypto.NewAsymmetricEncryptTransport(publicCryptoKeyPath, client.Transport)
 		if err != nil {
@@ -42,8 +52,23 @@ func NewMetricsExporter(serverURL string, provider service.MetricsProvider, clie
 
 	}
 
+	var grpcConn *grpc.ClientConn
+	var grpcClient pb.MetricsClient
+	if grpcAddr != "" {
+		var err error
+		grpcConn, err = grpc.NewClient(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return nil, err
+		}
+		grpcClient = pb.NewMetricsClient(grpcConn)
+		log.Info("gRPC client initialized", zap.String("addr", grpcAddr))
+	}
+
 	return &MetricsExporter{
 		serverURL:       serverURL,
+		grpcAddr:        grpcAddr,
+		grpcConn:        grpcConn,
+		grpcClient:      grpcClient,
 		provider:        provider,
 		client:          client,
 		log:             log,
@@ -107,9 +132,16 @@ func (me *MetricsExporter) Stop(ctx context.Context) error {
 
 	select {
 	case <-c:
+		if me.grpcConn != nil {
+			_ = me.grpcConn.Close()
+		}
 		me.log.Info("All background workers stopped cleanly.")
 		return nil
+
 	case <-ctx.Done():
+		if me.grpcConn != nil {
+			_ = me.grpcConn.Close()
+		}
 		return ctx.Err()
 	}
 }
@@ -154,7 +186,11 @@ func (me *MetricsExporter) worker(ctx context.Context) {
 			if !ok {
 				return
 			}
-			me.postMetrics(ctx, metrics)
+			if me.grpcClient != nil {
+				me.postMetricsGRPC(ctx, metrics)
+			} else {
+				me.postMetrics(ctx, metrics)
+			}
 
 		case <-ctx.Done():
 			// gracefull shutdown
@@ -165,7 +201,11 @@ func (me *MetricsExporter) worker(ctx context.Context) {
 					cancel()
 					return
 				}
-				me.postMetrics(flushCtx, metrics)
+				if me.grpcClient != nil {
+					me.postMetricsGRPC(flushCtx, metrics)
+				} else {
+					me.postMetrics(flushCtx, metrics)
+				}
 			}
 			cancel()
 			return
@@ -218,6 +258,7 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 		if sha256HeaderValue != "" {
 			request.Header.Set("HashSHA256", sha256HeaderValue)
 		}
+		request.Header.Set("X-Real-IP", config.GetMachineIP())
 		resp, err = me.client.Do(request)
 		if err == nil {
 			// all fine!
@@ -250,5 +291,60 @@ func (me *MetricsExporter) postMetrics(ctx context.Context, requests []model.Met
 			return
 		}
 		me.log.Info("Server response body", zap.String("body", string(bodyBytes)))
+	}
+}
+
+
+func (me *MetricsExporter) postMetricsGRPC(ctx context.Context, requests []model.Metrics) {
+	pbMetrics := make([]*pb.Metric, 0, len(requests))
+	for _, r := range requests {
+		m := &pb.Metric{Id: r.ID}
+		switch r.MType {
+		case model.Counter:
+			m.Type = pb.Metric_COUNTER
+			if r.Delta != nil {
+				m.Delta = *r.Delta
+			}
+		case model.Gauge:
+			m.Type = pb.Metric_GAUGE
+			if r.Value != nil {
+				m.Value = *r.Value
+			}
+		}
+		pbMetrics = append(pbMetrics, m)
+	}
+
+	req := &pb.UpdateMetricsRequest{Metrics: pbMetrics}
+	md := metadata.Pairs("x-real-ip", config.GetMachineIP())
+
+	maxAttempts := 4
+	retryDelay := 1 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			me.log.Error("Context cancelled during gRPC retries", zap.Error(err))
+			return
+		}
+
+		reqCtx := metadata.NewOutgoingContext(ctx, md)
+		_, err := me.grpcClient.UpdateMetrics(reqCtx, req)
+		if err == nil {
+			return
+		}
+
+		if attempt == maxAttempts {
+			me.log.Error("Error publishing metrics via gRPC after all retries", zap.Int("size", len(requests)), zap.Error(err))
+			return
+		}
+
+		me.log.Warn("gRPC error occurred, retrying...", zap.Int("attempt", attempt), zap.Error(err))
+
+		select {
+		case <-time.After(retryDelay):
+			retryDelay += 2 * time.Second
+		case <-ctx.Done():
+			me.log.Error("Context cancelled while waiting for next gRPC retry", zap.Error(ctx.Err()))
+			return
+		}
 	}
 }

@@ -38,7 +38,16 @@ func main() {
 	collector := agent.NewMetricCollector(provider, zapLogger)
 
 	collector.Start(ctx, time.Duration(cfg.PollInterval)*time.Second)
-	exporter, err := agent.NewMetricsExporter(cfg.ServerAddr, provider, http.Client{}, zapLogger, cfg.CryptoKey, cfg.PublicCryptoKey, cfg.RateLimit)
+	exporter, err := agent.NewMetricsExporter(
+		cfg.ServerAddr,
+		cfg.GRPCServerAddr,
+		provider,
+		http.Client{},
+		zapLogger,
+		cfg.CryptoKey,
+		cfg.PublicCryptoKey,
+		cfg.RateLimit,
+	)
 	if err != nil {
 		zapLogger.Error("failed to create exporter!", zap.Error(err))
 		return

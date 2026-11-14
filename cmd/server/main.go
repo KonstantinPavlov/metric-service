@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"html/template"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,11 +20,13 @@ import (
 	"github.com/KonstantinPavlov/metric-service/internal/handler"
 	"github.com/KonstantinPavlov/metric-service/internal/logger"
 	"github.com/KonstantinPavlov/metric-service/internal/middleware"
+	pb "github.com/KonstantinPavlov/metric-service/internal/proto"
 	"github.com/KonstantinPavlov/metric-service/internal/repository"
 	"github.com/labstack/echo-contrib/pprof"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 //go:embed views/*
@@ -118,6 +121,12 @@ func run(zapLogger *zap.Logger) error {
 		httpServer.Use(middle.Middleware())
 	}
 
+	subnetGuard, err := middleware.NewSubnetGuard(cfg.TrustedSubNet)
+	if err != nil {
+		return err
+	}
+	httpServer.Use(subnetGuard.Middleware())
+
 	// observers
 	if cfg.AuditFile != "" {
 		o, err := audit.NewAuditFileObserver(zapLogger, cfg.AuditFile)
@@ -154,9 +163,40 @@ func run(zapLogger *zap.Logger) error {
 		}
 	}()
 
+	// startin grpc server
+	var grpcServer *grpc.Server
+	if cfg.GRPCAddr != "" {
+		subnetInterceptor, err := middleware.GRPCSubnetInterceptor(cfg.TrustedSubNet)
+		if err != nil {
+			return err
+		}
+
+		grpcServer = grpc.NewServer(grpc.UnaryInterceptor(subnetInterceptor))
+		pb.RegisterMetricsServer(grpcServer, handler.NewGRPCMetricsServer(&webHandler))
+
+		lis, err := net.Listen("tcp", cfg.GRPCAddr)
+		if err != nil {
+			return err
+		}
+
+		go func() {
+			zapLogger.Info("Starting gRPC server...", zap.String("addr", cfg.GRPCAddr))
+			if err := grpcServer.Serve(lis); err != nil {
+				zapLogger.Fatal("Failed to start gRPC server", zap.Error(err))
+			}
+		}()
+	}
+
 	// gracefull shutdown
 	<-ctx.Done()
 	zapLogger.Info("Shutting down server gracefully...")
+
+	// Stopping grpc server
+	if grpcServer != nil {
+		grpcServer.GracefulStop()
+		zapLogger.Info("gRPC server stopped successfully")
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// First is echo web server!
